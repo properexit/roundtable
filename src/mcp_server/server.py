@@ -10,13 +10,12 @@ Run standalone for local dev:
 """
 from __future__ import annotations
 
-from mcp.server.mcpserver import MCPServer
+from mcp.server.fastmcp import FastMCP
 
 from src.tools import market_data, news, portfolio, sentiment
 
-mcp = MCPServer(
+mcp = FastMCP(
     name="roundtable-tools",
-    version="0.1.0",
     instructions=(
         "Tools for a multi-agent investment RESEARCH system. "
         "All data tools are read-only. execute_simulated_trade is the only "

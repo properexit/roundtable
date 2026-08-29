@@ -5,7 +5,7 @@ langchain-groq>=0.2.0
 langchain-openai>=0.2.0
 
 # MCP
-mcp>=1.0.0
+mcp>=1.9.0,<2.0.0  # pinned: langchain-mcp-adapters requires the v1 API (FastMCP), not v2 (MCPServer)
 langchain-mcp-adapters>=0.1.0
 
 # Data sources
