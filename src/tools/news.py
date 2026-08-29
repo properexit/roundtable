@@ -10,6 +10,9 @@ import os
 from datetime import datetime, timedelta
 
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 NEWS_API_URL = "https://newsapi.org/v2/everything"
 

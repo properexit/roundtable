@@ -13,6 +13,9 @@ import os
 
 from azure.ai.textanalytics import TextAnalyticsClient
 from azure.core.credentials import AzureKeyCredential
+from dotenv import load_dotenv
+
+load_dotenv()
 
 MAX_DOC_LEN = 5120  # Azure Text Analytics per-document character limit
 
