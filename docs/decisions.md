@@ -46,3 +46,16 @@ region/subscription at all.
   and I can't test the newer API from a sandboxed shell without live model
   access -- revisit if time allows, otherwise mention in the writeup as a
   known upgrade path rather than something missed.
+
+## Milestone: full core system verified end-to-end (2026-08-29)
+Confirmed live and working, in this order: yfinance price/fundamentals,
+NewsAPI, Azure AI Language sentiment, Azure OpenAI (gpt-4.1-mini) reasoning
+through a real MCP client/server round trip, the LangGraph Roundtable graph
+(parallel Fundamentals+News -> draft -> Risk -> final), and the human-
+approval interrupt/resume mechanism in both branches (reject never touches
+state; approve executes with a real live price and updates the audit log).
+
+This is the core "does the architecture actually work" question answered
+yes. What remains is productionization: a UI, the eval/backtest harness,
+CI/CD, and the Azure deployment (swapping local JSON state for Table
+Storage, adding Key Vault + Container Apps + App Insights).
