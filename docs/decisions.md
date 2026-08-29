@@ -39,3 +39,10 @@ region/subscription at all.
 - Avoids real financial/regulatory exposure.
 - The interesting engineering problem (multi-agent synthesis, tool-gating,
   audit trail, eval) doesn't require real order execution to be genuine.
+
+## Known tech debt (tracked, not urgent)
+- `create_react_agent` (langgraph.prebuilt) is deprecated in favor of
+  `langchain.agents.create_agent`. Left as-is for now since it still works
+  and I can't test the newer API from a sandboxed shell without live model
+  access -- revisit if time allows, otherwise mention in the writeup as a
+  known upgrade path rather than something missed.
