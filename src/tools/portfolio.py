@@ -17,6 +17,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from src.tools import market_data
+
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 PORTFOLIO_FILE = DATA_DIR / "portfolio.json"
 PROPOSALS_FILE = DATA_DIR / "proposals.json"
@@ -97,7 +99,7 @@ def execute_trade(proposal_id: str, approved: bool, approved_by: str) -> dict:
     # Fail-closed: this is the only branch that mutates the portfolio, and it
     # requires both approved=True and a named approver.
     state = get_state()
-    price = _current_price_stub(proposal["ticker"])  # see note below
+    price = market_data.get_price(proposal["ticker"])["last_price"]
     cost = price * proposal["quantity"]
 
     if proposal["action"] == "buy":
@@ -131,12 +133,3 @@ def execute_trade(proposal_id: str, approved: bool, approved_by: str) -> dict:
     _append_audit({"event": "trade_executed", "proposal_id": proposal_id, "approved_by": approved_by, "price": price})
     return {"status": "executed", "proposal_id": proposal_id, "price": price, "new_state": state}
 
-
-def _current_price_stub(ticker: str) -> float:
-    """
-    TODO(pair-build step 2): replace with a real call to
-    src.tools.market_data.get_price once we've confirmed live data access
-    (see docs/decisions.md - network note). Stubbed so the portfolio logic
-    itself is fully testable right now with zero network dependency.
-    """
-    return 100.00

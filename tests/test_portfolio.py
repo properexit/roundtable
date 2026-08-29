@@ -11,6 +11,9 @@ import pytest
 from src.tools import portfolio
 
 
+MOCK_PRICE = 150.00
+
+
 @pytest.fixture(autouse=True)
 def isolated_data_dir(tmp_path, monkeypatch):
     """Point the module at a throwaway data dir for every test."""
@@ -18,6 +21,13 @@ def isolated_data_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(portfolio, "PORTFOLIO_FILE", tmp_path / "portfolio.json")
     monkeypatch.setattr(portfolio, "PROPOSALS_FILE", tmp_path / "proposals.json")
     monkeypatch.setattr(portfolio, "AUDIT_LOG_FILE", tmp_path / "audit_log.jsonl")
+    # Trade execution needs a price; stub it so tests never hit the network
+    # or depend on the market being open. See test_execute_trade_uses_live_price
+    # below for the one test that intentionally exercises the real call.
+    monkeypatch.setattr(
+        portfolio.market_data, "get_price",
+        lambda ticker: {"ticker": ticker, "last_price": MOCK_PRICE},
+    )
     yield tmp_path
 
 
@@ -81,3 +91,17 @@ def test_every_execution_attempt_is_audit_logged():
     events = [json.loads(line)["event"] for line in log_lines]
     assert "trade_proposed" in events
     assert "trade_executed" in events
+
+
+def test_execute_trade_uses_market_data_price(monkeypatch):
+    """Confirms the executed price actually comes from market_data.get_price,
+    not a hardcoded value -- this is what the fixture above stubs out."""
+    monkeypatch.setattr(
+        portfolio.market_data, "get_price",
+        lambda ticker: {"ticker": ticker, "last_price": 42.50},
+    )
+    proposal = portfolio.propose_trade("AAPL", "buy", 2, "price wiring check")
+    result = portfolio.execute_trade(proposal["proposal_id"], approved=True, approved_by="uday")
+
+    assert result["price"] == 42.50
+    assert portfolio.get_state()["positions"]["AAPL"]["avg_cost"] == 42.50
