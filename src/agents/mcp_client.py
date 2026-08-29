@@ -7,13 +7,22 @@ underlying implementation, exactly like a real multi-service system.
 """
 from __future__ import annotations
 
+import os
+
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
+# env is passed explicitly -- the MCP server runs as a spawned subprocess,
+# and without this, tools that need secrets (news.py, sentiment.py -- e.g.
+# NEWS_API_KEY, AZURE_LANGUAGE_KEY) fail with a KeyError even though the
+# parent process has them, because subprocess env inheritance isn't
+# guaranteed by langchain-mcp-adapters' stdio transport. market_data.py
+# tools never surfaced this since yfinance needs no credentials.
 MCP_SERVER_PARAMS = {
     "roundtable": {
         "command": "python3",
         "args": ["-m", "src.mcp_server.server"],
         "transport": "stdio",
+        "env": dict(os.environ),
     }
 }
 
