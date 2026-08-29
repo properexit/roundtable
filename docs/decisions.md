@@ -59,3 +59,18 @@ This is the core "does the architecture actually work" question answered
 yes. What remains is productionization: a UI, the eval/backtest harness,
 CI/CD, and the Azure deployment (swapping local JSON state for Table
 Storage, adding Key Vault + Container Apps + App Insights).
+
+## Known tech debt: MCP client instantiation per tool-fetch
+`get_mcp_tools()` spawns a fresh `MultiServerMCPClient` (and therefore a new
+Python subprocess running the MCP server) on essentially every call --
+across one /analyze run this means 4-5 separate subprocess spawns
+(fundamentals, news, risk, propose, execute), each paying the full import
+cost of langchain/azure SDKs. This is almost certainly what caused OOM
+crashes on the Container App's default 0.25 CPU / 0.5Gi allocation.
+
+Fast fix applied: bumped the Container App to 1.0 CPU / 2Gi.
+Real fix (not done yet, time-permitting): hold one long-lived MCP client/
+session for the duration of a graph run (or for the process lifetime) and
+reuse it across nodes instead of reconnecting per tool-fetch. Documented
+here rather than silently patched over with more resources and left
+unexplained.
