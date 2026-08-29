@@ -21,6 +21,8 @@ azure-data-tables>=12.5.0
 
 # App / infra
 streamlit>=1.38.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.31.0
 python-dotenv>=1.0.0
 pydantic>=2.8.0
 
