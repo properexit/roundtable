@@ -4,11 +4,21 @@ Running log of what was decided and why, kept so the reasoning survives past
 the code itself (and doubles as interview prep material).
 
 ## LLM backend
-Decision pending — checking Azure OpenAI access on student subscription first.
-If blocked/needs approval, falling back to Groq rather than waiting, since the
-Azure story is already carried by AI Language (sentiment), Table Storage
-(portfolio/audit), Key Vault (secrets), Container Apps (hosting), and App
-Insights (tracing) — the LLM vendor is a swappable detail, not the point.
+**Decided: Azure OpenAI, gpt-4.1-mini.**
+
+Chose 4.1-mini over gpt-4.1 and gpt-5-mini: cheap enough for a multi-agent
+system firing several calls per run, and the more recognizable, defensible
+choice in an interview versus explaining why a research demo needed a
+frontier-class model.
+
+Notable friction getting here, worth remembering for interviews as a real
+cloud-operations story: the Azure for Students subscription's region-
+allowlist policy rejected the first deployment attempt (auto-routed to
+eastus2 under 'Global Standard', which the subscription disallows).
+Fixed by switching the deployment type to 'Standard' (regional, pinned to
+the resource's own region, Germany West Central) and picking gpt-4.1-mini,
+which had availability there. gpt-35-turbo was not available in that
+region/subscription at all.
 
 ## Why MCP instead of calling APIs directly from agent code
 - Tools become a versioned, inspectable contract instead of ad-hoc function
