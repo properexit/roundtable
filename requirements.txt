@@ -1,0 +1,28 @@
+# Orchestration
+langgraph>=0.2.0
+langchain>=0.3.0
+langchain-groq>=0.2.0
+langchain-openai>=0.2.0
+
+# MCP
+mcp>=1.0.0
+
+# Data sources
+yfinance>=0.2.40
+requests>=2.32.0
+
+# Azure
+azure-ai-textanalytics>=5.3.0
+azure-identity>=1.17.0
+azure-keyvault-secrets>=4.8.0
+azure-storage-blob>=12.20.0
+azure-data-tables>=12.5.0
+
+# App / infra
+streamlit>=1.38.0
+python-dotenv>=1.0.0
+pydantic>=2.8.0
+
+# Testing / eval
+pytest>=8.3.0
+pandas>=2.2.0
