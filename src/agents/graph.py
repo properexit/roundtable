@@ -50,8 +50,19 @@ class RoundtableState(TypedDict, total=False):
 
 
 def _tool_result_to_dict(raw) -> dict:
-    """MCP tool results come back as a JSON string via the LangChain adapter."""
-    return json.loads(raw) if isinstance(raw, str) else raw
+    """
+    MCP tool results come back from langchain-mcp-adapters as a list of
+    content blocks, e.g. [{'type': 'text', 'text': '<json string>'}], not a
+    plain JSON string or dict -- unwrap that shape here so every caller in
+    this file just gets a plain dict.
+    """
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        return json.loads(raw)
+    if isinstance(raw, list) and raw and isinstance(raw[0], dict) and "text" in raw[0]:
+        return json.loads(raw[0]["text"])
+    raise TypeError(f"Unexpected MCP tool result shape: {type(raw)} -- {raw!r}")
 
 
 async def _fundamentals_node(state: RoundtableState) -> dict:
@@ -115,7 +126,7 @@ async def _propose_node(state: RoundtableState) -> dict:
     return {"proposal_id": result["proposal_id"]}
 
 
-def _human_approval_node(state: RoundtableState) -> dict:
+async def _human_approval_node(state: RoundtableState) -> dict:
     decision = interrupt({
         "message": "Human approval required before this trade touches the simulated portfolio.",
         "ticker": state["ticker"],
