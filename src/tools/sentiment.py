@@ -45,8 +45,10 @@ def analyze_news_sentiment(articles: list[dict]) -> dict:
 
     pos = neu = neg = 0.0
     valid = 0
-    for r in results:
+    errors = []
+    for i, r in enumerate(results):
         if r.is_error:
+            errors.append({"index": i, "code": r.error.code, "message": r.error.message})
             continue
         pos += r.confidence_scores.positive
         neu += r.confidence_scores.neutral
@@ -54,17 +56,27 @@ def analyze_news_sentiment(articles: list[dict]) -> dict:
         valid += 1
 
     if valid == 0:
-        return {"overall_sentiment": "neutral", "confidence": {}, "article_count": 0}
+        return {
+            "overall_sentiment": "neutral",
+            "confidence": {},
+            "article_count": 0,
+            "documents_submitted": len(documents),
+            "errors": errors,
+        }
 
     avg = {"positive": pos / valid, "neutral": neu / valid, "negative": neg / valid}
     overall = max(avg, key=avg.get)
 
-    return {
+    result = {
         "overall_sentiment": overall,
         "confidence": {k: round(v, 3) for k, v in avg.items()},
         "net_score": round(avg["positive"] - avg["negative"], 3),
         "article_count": valid,
+        "documents_submitted": len(documents),
     }
+    if errors:
+        result["errors"] = errors
+    return result
 
 
 if __name__ == "__main__":
