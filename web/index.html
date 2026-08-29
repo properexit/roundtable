@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roundtable — Multi-Agent Investment Research</title>
+<style>
+  :root {
+    --bg: #0b0e14;
+    --panel: #131720;
+    --panel-border: #232838;
+    --text: #e6e9ef;
+    --text-dim: #9aa3b5;
+    --accent: #5b8cff;
+    --bullish: #3ecf8e;
+    --bearish: #ff6b6b;
+    --neutral: #d6b656;
+    --mono: "SF Mono", "Roboto Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 80px; }
+
+  header { margin-bottom: 28px; }
+  h1 { font-size: 1.7rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .tagline { color: var(--text-dim); font-size: 0.95rem; }
+
+  .disclaimer {
+    background: rgba(214, 182, 86, 0.08);
+    border: 1px solid rgba(214, 182, 86, 0.35);
+    color: #e3ca8a;
+    font-size: 0.82rem;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin: 16px 0 24px;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 20px 22px;
+    margin-bottom: 16px;
+  }
+
+  .portfolio-bar {
+    display: flex;
+    gap: 24px;
+    align-items: baseline;
+    flex-wrap: wrap;
+  }
+  .portfolio-bar .stat-label { color: var(--text-dim); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .portfolio-bar .stat-value { font-family: var(--mono); font-size: 1.05rem; }
+
+  .search-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  input[type="text"] {
+    background: #0e1219;
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    padding: 11px 14px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    flex: 1;
+    min-width: 140px;
+  }
+  input[type="text"]:focus { outline: none; border-color: var(--accent); }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 11px 20px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover { filter: brightness(1.08); }
+  button:disabled { background: #3a4152; cursor: not-allowed; }
+  button.secondary { background: #232838; }
+  button.reject { background: #3a2226; color: #ff8b8b; }
+
+  .status-line { color: var(--text-dim); font-size: 0.88rem; margin-top: 10px; display: none; }
+  .status-line.active { display: flex; align-items: center; gap: 8px; }
+  .spinner {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--panel-border); border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .agent-card { display: none; }
+  .agent-card.show { display: block; }
+  .agent-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .agent-name { font-weight: 600; font-size: 0.95rem; }
+  .signal-badge {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 3px 10px;
+    border-radius: 20px;
+  }
+  .signal-bullish { background: rgba(62,207,142,0.15); color: var(--bullish); }
+  .signal-bearish, .signal-sell { background: rgba(255,107,107,0.15); color: var(--bearish); }
+  .signal-neutral, .signal-hold { background: rgba(214,182,86,0.15); color: var(--neutral); }
+  .agent-body { color: var(--text-dim); font-size: 0.9rem; white-space: pre-wrap; }
+
+  .final-card { border-color: var(--accent); }
+  .final-headline { font-size: 1.15rem; font-weight: 700; margin-bottom: 6px; }
+  .final-meta { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 12px; }
+
+  .approval-row { display: flex; gap: 10px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+  .approval-row input[type="text"] { max-width: 220px; }
+
+  .empty-state { color: var(--text-dim); font-size: 0.9rem; text-align: center; padding: 40px 0; }
+  footer { color: var(--text-dim); font-size: 0.78rem; text-align: center; margin-top: 40px; }
+  footer a { color: var(--text-dim); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Roundtable</h1>
+    <div class="tagline">Multi-agent investment research — News, Fundamentals, and Risk analysts synthesized into a human-approved recommendation.</div>
+  </header>
+
+  <div class="disclaimer">
+    Research &amp; education only. This is a simulated $100,000 paper-trading portfolio — no real orders are ever placed, and nothing here is investment advice.
+  </div>
+
+  <div class="card">
+    <div class="portfolio-bar" id="portfolio-bar">
+      <div><div class="stat-label">Cash</div><div class="stat-value" id="pf-cash">—</div></div>
+      <div><div class="stat-label">Positions</div><div class="stat-value" id="pf-positions">—</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="search-row">
+      <input type="text" id="ticker-input" placeholder="Ticker (e.g. AAPL)" value="AAPL">
+      <input type="text" id="company-input" placeholder="Company name (e.g. Apple Inc)" value="Apple Inc">
+      <button id="analyze-btn">Run Roundtable</button>
+    </div>
+    <div class="status-line" id="status-line"><div class="spinner"></div><span id="status-text">Analysts are convening...</span></div>
+  </div>
+
+  <div id="results">
+    <div class="empty-state" id="empty-state">Enter a ticker above and run the roundtable to see analyst output here.</div>
+
+    <div class="card agent-card" id="fundamentals-card">
+      <div class="agent-header"><div class="agent-name">Fundamentals Analyst</div><div class="signal-badge" id="fundamentals-badge"></div></div>
+      <div class="agent-body" id="fundamentals-body"></div>
+    </div>
+
+    <div class="card agent-card" id="news-card">
+      <div class="agent-header"><div class="agent-name">News &amp; Sentiment Analyst</div><div class="signal-badge" id="news-badge"></div></div>
+      <div class="agent-body" id="news-body"></div>
+    </div>
+
+    <div class="card agent-card" id="risk-card">
+      <div class="agent-header"><div class="agent-name">Risk Manager</div><div class="signal-badge" id="risk-badge"></div></div>
+      <div class="agent-body" id="risk-body"></div>
+    </div>
+
+    <div class="card final-card agent-card" id="final-card">
+      <div class="final-headline" id="final-headline"></div>
+      <div class="final-meta" id="final-meta"></div>
+      <div class="agent-body" id="final-body"></div>
+      <div class="approval-row" id="approval-row" style="display:none;">
+        <input type="text" id="approver-name" placeholder="Your name">
+        <button id="approve-btn">Approve trade</button>
+        <button id="reject-btn" class="reject">Reject</button>
+      </div>
+      <div class="status-line" id="execute-status"></div>
+    </div>
+  </div>
+
+  <footer>
+    Built as a cloud-native multi-agent system: LangGraph orchestration, a custom MCP tool server, Azure OpenAI + Azure AI Language, deployed on Azure Container Apps.
+    <br><a href="https://roundtable-api.lemonwater-fd61f0be.germanywestcentral.azurecontainerapps.io/docs" target="_blank">API docs</a>
+  </footer>
+</div>
+
+<script>
+  // Point this at your deployed backend.
+  const API_BASE = "https://roundtable-api.lemonwater-fd61f0be.germanywestcentral.azurecontainerapps.io";
+
+  const el = (id) => document.getElementById(id);
+  let currentThreadId = null;
+
+  function signalClass(action) {
+    const a = (action || "").toLowerCase();
+    if (a === "buy" || a === "bullish") return "signal-bullish";
+    if (a === "sell" || a === "bearish") return "signal-bearish";
+    return "signal-neutral";
+  }
+
+  function extractSignal(text) {
+    if (!text) return "neutral";
+    const m = text.match(/Signal:\s*(bullish|bearish|neutral)/i);
+    return m ? m[1].toLowerCase() : "neutral";
+  }
+
+  async function loadPortfolio() {
+    try {
+      const res = await fetch(`${API_BASE}/portfolio`);
+      const data = await res.json();
+      el("pf-cash").textContent = `$${data.cash.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+      const positions = Object.entries(data.positions || {});
+      el("pf-positions").textContent = positions.length
+        ? positions.map(([t, p]) => `${t}: ${p.quantity} @ $${p.avg_cost.toFixed(2)}`).join("  ·  ")
+        : "None";
+    } catch (e) {
+      el("pf-cash").textContent = "unavailable";
+      el("pf-positions").textContent = "unavailable";
+    }
+  }
+
+  function showStatus(text) {
+    el("status-text").textContent = text;
+    el("status-line").classList.add("active");
+  }
+  function hideStatus() {
+    el("status-line").classList.remove("active");
+  }
+
+  function resetResults() {
+    el("empty-state").style.display = "none";
+    ["fundamentals-card", "news-card", "risk-card", "final-card"].forEach(id => el(id).classList.remove("show"));
+    el("approval-row").style.display = "none";
+    el("execute-status").classList.remove("active");
+    el("execute-status").textContent = "";
+  }
+
+  function renderAgent(cardId, bodyId, badgeId, text) {
+    if (!text) return;
+    el(bodyId).textContent = text;
+    const signal = extractSignal(text);
+    el(badgeId).textContent = signal;
+    el(badgeId).className = "signal-badge " + signalClass(signal);
+    el(cardId).classList.add("show");
+  }
+
+  async function runAnalysis() {
+    const ticker = el("ticker-input").value.trim().toUpperCase();
+    const company = el("company-input").value.trim();
+    if (!ticker || !company) { alert("Enter both a ticker and a company name."); return; }
+
+    resetResults();
+    el("analyze-btn").disabled = true;
+    showStatus("Fundamentals + News analysts researching in parallel...");
+
+    try {
+      const res = await fetch(`${API_BASE}/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticker, company_name: company }),
+      });
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const data = await res.json();
+      currentThreadId = data.thread_id;
+
+      renderAgent("fundamentals-card", "fundamentals-body", "fundamentals-badge", data.fundamentals);
+      renderAgent("news-card", "news-body", "news-badge", data.news);
+      if (data.risk) renderAgent("risk-card", "risk-body", "risk-badge", data.risk);
+
+      if (data.status === "pending_approval") {
+        const rec = data.recommendation;
+        el("final-headline").textContent = `${rec.action.toUpperCase()} ${rec.quantity} shares of ${rec.ticker}`;
+        el("final-meta").textContent = `Confidence: ${rec.confidence}`;
+        el("final-body").textContent = rec.rationale;
+        el("approval-row").style.display = "flex";
+      } else {
+        el("final-headline").textContent = `Recommendation: ${(data.action || "hold").toUpperCase()}`;
+        el("final-meta").textContent = "No trade proposed";
+        el("final-body").textContent = data.rationale || "";
+      }
+      el("final-card").classList.add("show");
+    } catch (e) {
+      alert("Something went wrong running the roundtable: " + e.message);
+    } finally {
+      hideStatus();
+      el("analyze-btn").disabled = false;
+    }
+  }
+
+  async function submitApproval(approved) {
+    const approverName = el("approver-name").value.trim();
+    if (approved && !approverName) { alert("Enter your name to approve a trade -- it goes in the audit log."); return; }
+
+    el("execute-status").classList.add("active");
+    el("execute-status").innerHTML = `<div class="spinner"></div><span>${approved ? "Executing" : "Recording rejection"}...</span>`;
+
+    try {
+      const res = await fetch(`${API_BASE}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ thread_id: currentThreadId, approved, approved_by: approverName }),
+      });
+      const data = await res.json();
+      el("execute-status").innerHTML = `<span>Result: ${JSON.stringify(data.execution_result)}</span>`;
+      el("approval-row").style.display = "none";
+      loadPortfolio();
+    } catch (e) {
+      el("execute-status").innerHTML = `<span>Error: ${e.message}</span>`;
+    }
+  }
+
+  el("analyze-btn").addEventListener("click", runAnalysis);
+  el("approve-btn").addEventListener("click", () => submitApproval(true));
+  el("reject-btn").addEventListener("click", () => submitApproval(false));
+
+  loadPortfolio();
+</script>
+</body>
+</html>
