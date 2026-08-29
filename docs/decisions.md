@@ -74,3 +74,17 @@ session for the duration of a graph run (or for the process lifetime) and
 reuse it across nodes instead of reconnecting per tool-fetch. Documented
 here rather than silently patched over with more resources and left
 unexplained.
+
+## Bug: MCP subprocess env vars worked locally, failed in the container
+Root cause: `news.py`/`sentiment.py` call `load_dotenv()` at import time,
+which reads `.env` directly off disk relative to CWD. Locally, the spawned
+MCP server subprocess's CWD is the project root where `.env` lives, so it
+silently loaded secrets straight from the file every time, regardless of
+whether env vars were actually inherited from the parent process. In the
+container there's deliberately no `.env` file (secrets come from Azure
+Container App env vars instead) -- so the subprocess fell through to
+relying on inherited environment, which wasn't being passed explicitly by
+langchain-mcp-adapters' stdio transport, and every news/sentiment tool call
+failed with a KeyError. market_data.py never surfaced this since it needs
+no credentials. Fixed by explicitly passing `env=dict(os.environ)` when
+spawning the MCP server subprocess (src/agents/mcp_client.py).
