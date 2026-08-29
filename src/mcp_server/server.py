@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from mcp.server.mcpserver import MCPServer
 
-from src.tools import market_data, portfolio
+from src.tools import market_data, news, portfolio, sentiment
 
 mcp = MCPServer(
     name="roundtable-tools",
@@ -42,6 +42,20 @@ def get_fundamentals(ticker: str) -> dict:
 def get_price_history(ticker: str, period: str = "6mo") -> list[dict]:
     """Daily OHLCV history for a ticker over the given period (e.g. '6mo', '1y')."""
     return market_data.get_price_history(ticker, period)
+
+
+@mcp.tool()
+def get_news_sentiment(company_name: str, days: int = 7) -> dict:
+    """
+    Recent news sentiment for a company (use the company name, e.g. 'Apple',
+    not the ticker). Returns an aggregate positive/neutral/negative signal
+    plus the article count it was computed over -- this is what the
+    News/Sentiment Analyst agent should call, not get_news + Azure directly.
+    """
+    articles = news.get_news(company_name, days=days)
+    result = sentiment.analyze_news_sentiment(articles)
+    result["headlines"] = [a["title"] for a in articles[:5]]
+    return result
 
 
 @mcp.tool()
