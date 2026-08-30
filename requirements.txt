@@ -25,6 +25,7 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.31.0
 python-dotenv>=1.0.0
 pydantic>=2.8.0
+itsdangerous>=2.2.0  # signed session tokens for the single-user site login (src/api/auth.py)
 
 # Testing / eval
 pytest>=8.3.0

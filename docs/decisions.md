@@ -88,3 +88,88 @@ langchain-mcp-adapters' stdio transport, and every news/sentiment tool call
 failed with a KeyError. market_data.py never surfaced this since it needs
 no credentials. Fixed by explicitly passing `env=dict(os.environ)` when
 spawning the MCP server subprocess (src/agents/mcp_client.py).
+
+## Feature: real Upstox account integration (read-only) (2026-08-30)
+Added a second, explicitly separate surface: my *real* Upstox
+holdings/positions/funds, alongside (not mixed into) the simulated $100k
+paper portfolio the agents actually trade against. Nothing about the
+agents' trade proposal/approval/execution path changed -- this is purely a
+new read-only view.
+
+### Why not Upstox's hosted MCP server
+Upstox exposes a hosted, remote MCP server (`https://mcp.upstox.com/mcp`)
+built for interactive chat clients (Claude Desktop, Cursor, etc.) where a
+human is present to click through an OAuth screen. `langchain-mcp-adapters`
+doesn't have a clean story for carrying a per-user bearer token through a
+remote MCP connection from an unattended backend, and remote-MCP-with-OAuth
+is generally still an unsettled pattern industry-wide. Rather than fight
+that, this calls Upstox's own REST API directly (same underlying data, a
+normal documented OAuth2 flow) and exposes it as ordinary FastAPI routes --
+keeping the MCP boundary at the one server this project actually controls
+(src/mcp_server/server.py), not extending it to a third party's.
+
+### Why OAuth (daily login) instead of Upstox's Analytics Token
+Upstox has a second token type, the "Analytics Token": 1-year validity,
+generated directly from the developer dashboard, no daily re-auth. It looks
+like the obvious answer for an always-on service -- except it requires
+calling from a pre-registered **static outbound IP** for any account-level
+endpoint (holdings/positions/funds/orders/profile). Azure Container Apps on
+the Consumption plan (what `roundtable-api` runs on) does not offer a
+static outbound IP without upgrading to a paid Workload Profile + NAT
+Gateway environment. That's new, ongoing infrastructure cost and complexity
+to take on for a personal project on student credits, for a benefit (no
+daily click) that isn't worth it here. Went with the standard OAuth
+authorization-code flow instead: I click a "Connect Upstox" link roughly
+once a day, the resulting access token is valid until 3:30 AM IST the next
+day (a SEBI-driven policy applying to all Indian brokers, not Upstox-
+specific), and the system just treats "no token issued today" as
+disconnected and asks for a fresh login. A real production version serving
+many users, or one where daily manual login was unacceptable, would justify
+the static-IP infrastructure; for one personal account it doesn't.
+
+### Session design (src/api/auth.py)
+This project has exactly one real user. Rather than build a real
+auth/user system, added the smallest thing that's still honest about being
+a security boundary: one shared password (env var, compared with
+`secrets.compare_digest` to avoid timing leaks) issues a signed,
+time-limited token (`itsdangerous.URLSafeTimedSerializer`, 12h expiry) that
+every protected route checks via a FastAPI dependency. No database, no
+password hashing library, no session store -- correctly scoped to "keep my
+real financial data off a page anyone with the URL can hit," not scoped to
+be a general-purpose auth system.
+
+### OAuth CSRF via `state`
+`/auth/upstox/login` can only be reached with a valid site session (token
+passed as a query param, since a full-page redirect can't carry an
+Authorization header). That same token is threaded through as Upstox's
+`state` parameter and re-validated in `/auth/upstox/callback` -- standard
+OAuth CSRF protection, and it happens to reuse the exact same session-check
+logic as every other protected route, so there's no separate mechanism to
+keep in sync.
+
+### Storage (src/tools/upstox_auth_store.py)
+The OAuth token is stored in Azure Table Storage, not a local file --
+Container Apps instances are ephemeral, and a restart or new revision would
+silently wipe a local file. `AZURE_STORAGE_CONNECTION_STRING` had been
+sitting in `.env` unused since the very first setup; this is the first
+thing that actually uses it. Token freshness is checked by comparing the
+stored "issued on" date (IST) against today, rather than tracking the exact
+3:30 AM cutoff -- simpler, and the cost (occasionally asking for a fresh
+login a little earlier than strictly required) is negligible.
+
+### Verification
+Full auth/session/OAuth-redirect flow verified with FastAPI's TestClient
+(no real network calls to Upstox needed for this): unauthenticated access
+to `/portfolio/real/*` correctly 401s; wrong site password 401s; correct
+password issues a working session token; a protected route with a valid
+session but no Upstox connection returns `connected: false` instead of an
+error; a garbage/tampered session token 401s on both the data routes and
+`/auth/upstox/login`; the Upstox authorize-dialog redirect URL is built
+correctly (client_id, redirect_uri, state all present); and
+`/auth/upstox/callback` correctly rejects a bad `state` before ever
+attempting a token exchange. `src/tools/upstox_account.py`'s three
+response shapes (no token stored / valid token + 200 / valid-looking token
+but Upstox returns 401) were each verified in isolation with a mocked
+`requests.get`. What's *not* yet verified is the real end-to-end path
+against Upstox's live API and a real Azure Table -- that needs your actual
+login and gets checked once this is deployed.

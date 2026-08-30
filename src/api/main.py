@@ -10,18 +10,28 @@ Note: MemorySaver is in-process only -- if this container restarts between
 demo with a single instance; a real production version would swap in a
 persistent checkpointer (e.g. backed by the same Table Storage used for
 the portfolio). Documented here rather than silently glossed over.
+
+Also serves a small set of /auth and /portfolio/real/* routes that read
+your actual Upstox account (holdings/positions/funds, read-only) -- gated
+behind the single-user session auth in src/api/auth.py. See docs/decisions.md
+for why this exists as a separate, explicitly-gated surface rather than
+just another open endpoint.
 """
 from __future__ import annotations
 
+import os
 import uuid
+from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from langgraph.types import Command
 from pydantic import BaseModel
 
 from src.agents.graph import build_graph
-from src.tools import portfolio
+from src.api import auth
+from src.tools import portfolio, upstox_account, upstox_auth_store
 
 app = FastAPI(title="Roundtable API", version="0.1.0")
 
@@ -36,6 +46,8 @@ app.add_middleware(
 
 _graph = build_graph()
 
+FRONTEND_URL = "https://daycandle.org"
+
 
 class AnalyzeRequest(BaseModel):
     ticker: str
@@ -46,6 +58,10 @@ class ApproveRequest(BaseModel):
     thread_id: str
     approved: bool
     approved_by: str = ""
+
+
+class LoginRequest(BaseModel):
+    password: str
 
 
 @app.get("/health")
@@ -100,3 +116,73 @@ async def approve(req: ApproveRequest):
         raise HTTPException(status_code=404, detail=f"No pending approval for thread_id {req.thread_id}: {e}")
 
     return {"execution_result": result.get("execution_result")}
+
+
+# --- Site auth -------------------------------------------------------------
+
+
+@app.post("/auth/login")
+async def login(req: LoginRequest):
+    if not auth.check_password(req.password):
+        raise HTTPException(status_code=401, detail="Incorrect password")
+    return {"token": auth.issue_session_token()}
+
+
+# --- Upstox OAuth (real account, read-only) --------------------------------
+
+
+@app.get("/auth/upstox/login")
+async def upstox_login(session: str):
+    """
+    The browser navigates here directly as a full-page redirect, so the
+    site session token can't travel as an Authorization header the way it
+    does on every other protected route -- it comes as a query param
+    instead, then gets threaded through Upstox's OAuth `state` param so
+    /auth/upstox/callback can check it again on the way back.
+    """
+    if not auth.verify_session_token(session):
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    client_id = os.environ["UPSTOX_CLIENT_ID"]
+    redirect_uri = os.environ["UPSTOX_REDIRECT_URI"]
+    dialog_url = (
+        "https://api.upstox.com/v2/login/authorization/dialog"
+        f"?response_type=code&client_id={quote(client_id)}"
+        f"&redirect_uri={quote(redirect_uri, safe='')}"
+        f"&state={quote(session)}"
+    )
+    return RedirectResponse(dialog_url)
+
+
+@app.get("/auth/upstox/callback")
+async def upstox_callback(code: str, state: str):
+    """
+    `state` round-trips the site session token that started this flow.
+    Checking it here is standard OAuth CSRF protection (stops a stranger
+    from hitting this callback directly and linking their own Upstox login
+    to this service's stored token), and it reuses the same session check
+    every other protected route uses.
+    """
+    if not auth.verify_session_token(state):
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    upstox_auth_store.exchange_code_for_token(code)
+    return RedirectResponse(f"{FRONTEND_URL}/?upstox=connected")
+
+
+# --- Real account data (read-only, session-gated) ---------------------------
+
+
+@app.get("/portfolio/real/holdings", dependencies=[Depends(auth.require_session)])
+async def real_holdings():
+    return upstox_account.get_real_holdings()
+
+
+@app.get("/portfolio/real/positions", dependencies=[Depends(auth.require_session)])
+async def real_positions():
+    return upstox_account.get_real_positions()
+
+
+@app.get("/portfolio/real/funds", dependencies=[Depends(auth.require_session)])
+async def real_funds():
+    return upstox_account.get_real_funds()

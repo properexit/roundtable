@@ -121,6 +121,45 @@
   .empty-state { color: var(--text-dim); font-size: 0.9rem; text-align: center; padding: 40px 0; }
   footer { color: var(--text-dim); font-size: 0.78rem; text-align: center; margin-top: 40px; }
   footer a { color: var(--text-dim); }
+
+  .real-section { margin-top: 40px; }
+  .real-section .section-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .real-section h2 { font-size: 1.1rem; margin: 0; }
+  .real-section .section-sub { color: var(--text-dim); font-size: 0.82rem; }
+
+  .conn-pill {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 3px 10px;
+    border-radius: 20px;
+  }
+  .conn-connected { background: rgba(62,207,142,0.15); color: var(--bullish); }
+  .conn-disconnected { background: rgba(255,107,107,0.15); color: var(--bearish); }
+
+  .real-gate { text-align: center; padding: 10px 0; }
+  .real-gate .search-row { justify-content: center; }
+  .real-gate input[type="password"] {
+    background: #0e1219; border: 1px solid var(--panel-border); color: var(--text);
+    padding: 11px 14px; border-radius: 8px; font-size: 0.95rem; flex: 1; min-width: 140px;
+  }
+  .real-gate input[type="password"]:focus { outline: none; border-color: var(--accent); }
+  .real-error { color: var(--bearish); font-size: 0.85rem; margin-top: 8px; display: none; }
+  .real-error.show { display: block; }
+
+  .real-subhead { font-weight: 600; font-size: 0.88rem; margin: 18px 0 8px; }
+  .real-subhead:first-child { margin-top: 0; }
+
+  table.data-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; font-family: var(--mono); }
+  table.data-table th, table.data-table td {
+    text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--panel-border);
+    white-space: nowrap;
+  }
+  table.data-table th { color: var(--text-dim); font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  table.data-table td.num-pos { color: var(--bullish); }
+  table.data-table td.num-neg { color: var(--bearish); }
+  .real-empty { color: var(--text-dim); font-size: 0.85rem; padding: 8px 0; }
 </style>
 </head>
 <body>
@@ -178,6 +217,51 @@
         <button id="reject-btn" class="reject">Reject</button>
       </div>
       <div class="status-line" id="execute-status"></div>
+    </div>
+  </div>
+
+  <div class="real-section">
+    <div class="section-heading">
+      <h2>My Real Portfolio (Upstox)</h2>
+      <span class="conn-pill" id="real-conn-pill">checking...</span>
+    </div>
+    <div class="section-sub">Read-only. Nothing on this page can place, modify, or cancel a real order — see the disclaimer below.</div>
+
+    <div class="card">
+      <!-- Step 1: site login -->
+      <div id="real-gate" class="real-gate">
+        <div class="search-row">
+          <input type="password" id="site-password" placeholder="Site password">
+          <button id="site-login-btn">Unlock</button>
+        </div>
+        <div class="real-error" id="site-login-error">Incorrect password.</div>
+      </div>
+
+      <!-- Step 2: connect Upstox (shown once logged in, if not yet connected) -->
+      <div id="real-connect" style="display:none; text-align:center; padding: 10px 0;">
+        <p class="section-sub" style="margin-bottom: 14px;">Logged in. Connect your Upstox account to pull real holdings, positions, and funds.</p>
+        <button id="upstox-connect-btn">Connect Upstox</button>
+        <button id="site-logout-btn" class="secondary" style="margin-left: 8px;">Log out</button>
+      </div>
+
+      <!-- Step 3: real data (shown once Upstox is connected) -->
+      <div id="real-data" style="display:none;">
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom: 4px;">
+          <button id="real-refresh-btn" class="secondary">Refresh</button>
+          <button id="site-logout-btn-2" class="secondary">Log out</button>
+        </div>
+
+        <div class="real-subhead">Holdings</div>
+        <div id="real-holdings"></div>
+
+        <div class="real-subhead">Positions</div>
+        <div id="real-positions"></div>
+
+        <div class="real-subhead">Funds</div>
+        <div id="real-funds"></div>
+      </div>
+
+      <div class="real-error" id="real-fetch-error"></div>
     </div>
   </div>
 
@@ -317,6 +401,188 @@
   el("reject-btn").addEventListener("click", () => submitApproval(false));
 
   loadPortfolio();
+
+  // --- My Real Portfolio (Upstox) -------------------------------------------
+  const REAL_SESSION_KEY = "roundtable_session";
+
+  function getSessionToken() {
+    try { return localStorage.getItem(REAL_SESSION_KEY); } catch (e) { return null; }
+  }
+  function setSessionToken(token) {
+    try { localStorage.setItem(REAL_SESSION_KEY, token); } catch (e) {}
+  }
+  function clearSessionToken() {
+    try { localStorage.removeItem(REAL_SESSION_KEY); } catch (e) {}
+  }
+
+  function showRealGate() {
+    el("real-gate").style.display = "block";
+    el("real-connect").style.display = "none";
+    el("real-data").style.display = "none";
+    el("real-conn-pill").textContent = "locked";
+    el("real-conn-pill").className = "conn-pill conn-disconnected";
+  }
+  function showRealConnect() {
+    el("real-gate").style.display = "none";
+    el("real-connect").style.display = "block";
+    el("real-data").style.display = "none";
+    el("real-conn-pill").textContent = "not connected";
+    el("real-conn-pill").className = "conn-pill conn-disconnected";
+  }
+  function showRealData() {
+    el("real-gate").style.display = "none";
+    el("real-connect").style.display = "none";
+    el("real-data").style.display = "block";
+    el("real-conn-pill").textContent = "connected";
+    el("real-conn-pill").className = "conn-pill conn-connected";
+  }
+
+  async function siteLogin() {
+    const password = el("site-password").value;
+    if (!password) return;
+    el("site-login-error").classList.remove("show");
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      if (!res.ok) { el("site-login-error").classList.add("show"); return; }
+      const data = await res.json();
+      setSessionToken(data.token);
+      el("site-password").value = "";
+      await refreshRealSection();
+    } catch (e) {
+      el("site-login-error").textContent = "Login failed: " + e.message;
+      el("site-login-error").classList.add("show");
+    }
+  }
+
+  function siteLogout() {
+    clearSessionToken();
+    showRealGate();
+  }
+
+  function connectUpstox() {
+    const token = getSessionToken();
+    if (!token) { showRealGate(); return; }
+    // Full-page navigation -- the site session token travels as a query
+    // param here, then rides through Upstox's OAuth `state` param so the
+    // backend can check it again on the way back (see src/api/main.py).
+    window.location.href = `${API_BASE}/auth/upstox/login?session=${encodeURIComponent(token)}`;
+  }
+
+  function fmtNum(v) {
+    return typeof v === "number" ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : (v ?? "—");
+  }
+
+  function renderTable(rows, columns) {
+    if (!Array.isArray(rows) || rows.length === 0) return `<div class="real-empty">None.</div>`;
+    const head = columns.map(c => `<th>${c.label}</th>`).join("");
+    const body = rows.map(r => {
+      const cells = columns.map(c => {
+        const raw = r[c.key];
+        let cls = "";
+        if (c.signColor && typeof raw === "number") cls = raw > 0 ? "num-pos" : (raw < 0 ? "num-neg" : "");
+        return `<td class="${cls}">${fmtNum(raw)}</td>`;
+      }).join("");
+      return `<tr>${cells}</tr>`;
+    }).join("");
+    return `<table class="data-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+  }
+
+  function renderKeyValueBlocks(obj) {
+    if (!obj || typeof obj !== "object") return `<div class="real-empty">None.</div>`;
+    const entries = Object.entries(obj);
+    if (entries.length === 0) return `<div class="real-empty">None.</div>`;
+    return entries.map(([segment, values]) => {
+      if (!values || typeof values !== "object") return "";
+      const rows = Object.entries(values)
+        .map(([k, v]) => `<tr><td>${k}</td><td>${fmtNum(v)}</td></tr>`)
+        .join("");
+      return `<div style="margin-bottom:10px;">
+        <div style="color:var(--text-dim); font-size:0.78rem; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:4px;">${segment}</div>
+        <table class="data-table"><tbody>${rows}</tbody></table>
+      </div>`;
+    }).join("");
+  }
+
+  const HOLDINGS_COLUMNS = [
+    { key: "trading_symbol", label: "Symbol" },
+    { key: "quantity", label: "Qty" },
+    { key: "average_price", label: "Avg Price" },
+    { key: "last_price", label: "Last Price" },
+    { key: "pnl", label: "P&L", signColor: true },
+    { key: "day_change_percentage", label: "Day %", signColor: true },
+  ];
+
+  const POSITIONS_COLUMNS = [
+    { key: "trading_symbol", label: "Symbol" },
+    { key: "quantity", label: "Qty" },
+    { key: "average_price", label: "Avg Price" },
+    { key: "last_price", label: "Last Price" },
+    { key: "pnl", label: "P&L", signColor: true },
+    { key: "product", label: "Product" },
+  ];
+
+  async function fetchReal(path) {
+    const token = getSessionToken();
+    const res = await fetch(`${API_BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.status === 401) {
+      clearSessionToken();
+      showRealGate();
+      throw new Error("session-expired");
+    }
+    return res.json();
+  }
+
+  async function loadRealData() {
+    el("real-fetch-error").classList.remove("show");
+    try {
+      const [holdings, positions, funds] = await Promise.all([
+        fetchReal("/portfolio/real/holdings"),
+        fetchReal("/portfolio/real/positions"),
+        fetchReal("/portfolio/real/funds"),
+      ]);
+
+      // Site session is fine but Upstox's own token is missing/expired --
+      // distinct from a 401, since the backend returns 200 + connected:false
+      // for this case (see src/tools/upstox_account.py).
+      if (holdings.connected === false || positions.connected === false || funds.connected === false) {
+        showRealConnect();
+        return;
+      }
+
+      el("real-holdings").innerHTML = renderTable(holdings.data, HOLDINGS_COLUMNS);
+      el("real-positions").innerHTML = renderTable(positions.data, POSITIONS_COLUMNS);
+      el("real-funds").innerHTML = renderKeyValueBlocks(funds.data);
+      showRealData();
+    } catch (e) {
+      if (e.message !== "session-expired") {
+        el("real-fetch-error").textContent = "Couldn't load real portfolio data: " + e.message;
+        el("real-fetch-error").classList.add("show");
+      }
+    }
+  }
+
+  async function refreshRealSection() {
+    if (!getSessionToken()) { showRealGate(); return; }
+    await loadRealData();
+  }
+
+  el("site-login-btn").addEventListener("click", siteLogin);
+  el("site-password").addEventListener("keydown", (e) => { if (e.key === "Enter") siteLogin(); });
+  el("upstox-connect-btn").addEventListener("click", connectUpstox);
+  el("site-logout-btn").addEventListener("click", siteLogout);
+  el("site-logout-btn-2").addEventListener("click", siteLogout);
+  el("real-refresh-btn").addEventListener("click", loadRealData);
+
+  // Clean the ?upstox=connected param Upstox's redirect leaves behind so a
+  // page refresh doesn't look like a fresh callback.
+  if (new URLSearchParams(window.location.search).get("upstox") === "connected") {
+    window.history.replaceState({}, "", window.location.pathname);
+  }
+  refreshRealSection();
 </script>
 </body>
 </html>
