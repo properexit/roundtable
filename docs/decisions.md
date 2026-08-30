@@ -195,3 +195,23 @@ values as Container App secrets + env vars. Worth remembering for next
 time: "add to .env" and "deploy" are two separate steps, and skipping the
 second one fails silently from the browser's point of view rather than
 with an obviously-related error message.
+
+## Bug: storage connection string silently truncated at the first semicolon
+`scripts/deploy_env_vars.sh` loads `.env` via plain `source .env`. Every value
+in that file had been simple enough (API keys, URLs) that this never
+mattered -- but an Azure Storage connection string is delimited by `;`
+(`DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;...`), and
+in bash, an unquoted `;` in a sourced file ends one statement and starts a
+new one. `source` silently accepted `AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https`
+as the full assignment and treated `AccountName=...`, `AccountKey=...` etc.
+as separate (harmless, no-op) statements afterward -- no error, no warning,
+just an incomplete value quietly making it all the way to
+`az containerapp secret set`, then failing much later, deep in the Azure
+Table SDK, as "Connection string missing required connection details."
+
+Fixed by quoting the value in `.env` (`KEY="value;with;semicolons"`) so
+bash's `source` treats it as one literal string. Confirmed via
+`az containerapp logs show` that the traceback pointed exactly at
+`TableServiceClient.from_connection_string` -- diagnosed the same way the
+earlier OOM and env-inheritance bugs were: read the actual container logs
+rather than guess from the browser's generic "Failed to fetch".
