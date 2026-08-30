@@ -173,3 +173,25 @@ but Upstox returns 401) were each verified in isolation with a mocked
 `requests.get`. What's *not* yet verified is the real end-to-end path
 against Upstox's live API and a real Azure Table -- that needs your actual
 login and gets checked once this is deployed.
+
+## Bug: real-Upstox login gave a generic "Failed to fetch" in the browser
+Root cause: shipped `src/api/auth.py` and the Upstox routes reading
+`SITE_LOGIN_PASSWORD`, `SITE_SESSION_SECRET`, `UPSTOX_CLIENT_ID`,
+`UPSTOX_CLIENT_SECRET`, `UPSTOX_REDIRECT_URI`, and (for the first time)
+`AZURE_STORAGE_CONNECTION_STRING` from `os.environ`, and had these added to
+the *local* `.env` -- but never pushed them to the actual Azure Container
+App as secrets/env vars. Local `.env` and the deployed container's
+environment are entirely separate; adding a key locally does nothing to
+what's running in Azure. `/auth/login` hitting `os.environ["SITE_LOGIN_PASSWORD"]`
+therefore raised an unhandled `KeyError` -> FastAPI 500 -> the response came
+back without CORS headers (a well-known FastAPI/Starlette behavior:
+CORSMiddleware only adds its headers to responses that complete normally,
+not to ones short-circuited by an unhandled exception) -> the browser
+reported this as a generic "Failed to fetch" instead of a readable error,
+which is what made this confusing to diagnose from the frontend alone.
+
+Fixed by extending `scripts/deploy_env_vars.sh` to also push the six new
+values as Container App secrets + env vars. Worth remembering for next
+time: "add to .env" and "deploy" are two separate steps, and skipping the
+second one fails silently from the browser's point of view rather than
+with an obviously-related error message.

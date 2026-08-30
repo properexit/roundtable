@@ -17,7 +17,13 @@ az containerapp secret set --name "$APP_NAME" --resource-group "$RESOURCE_GROUP"
   azure-openai-deployment="$AZURE_OPENAI_DEPLOYMENT" \
   azure-language-endpoint="$AZURE_LANGUAGE_ENDPOINT" \
   azure-language-key="$AZURE_LANGUAGE_KEY" \
-  news-api-key="$NEWS_API_KEY"
+  news-api-key="$NEWS_API_KEY" \
+  azure-storage-connection-string="$AZURE_STORAGE_CONNECTION_STRING" \
+  site-login-password="$SITE_LOGIN_PASSWORD" \
+  site-session-secret="$SITE_SESSION_SECRET" \
+  upstox-client-id="$UPSTOX_CLIENT_ID" \
+  upstox-client-secret="$UPSTOX_CLIENT_SECRET" \
+  upstox-redirect-uri="$UPSTOX_REDIRECT_URI"
 
 # --set-env-vars forces a new revision, which also gives Azure a fresh
 # chance to schedule with the (already-correct) ingress port config instead
@@ -28,6 +34,12 @@ az containerapp update --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" --s
   AZURE_OPENAI_DEPLOYMENT=secretref:azure-openai-deployment \
   AZURE_LANGUAGE_ENDPOINT=secretref:azure-language-endpoint \
   AZURE_LANGUAGE_KEY=secretref:azure-language-key \
-  NEWS_API_KEY=secretref:news-api-key
+  NEWS_API_KEY=secretref:news-api-key \
+  AZURE_STORAGE_CONNECTION_STRING=secretref:azure-storage-connection-string \
+  SITE_LOGIN_PASSWORD=secretref:site-login-password \
+  SITE_SESSION_SECRET=secretref:site-session-secret \
+  UPSTOX_CLIENT_ID=secretref:upstox-client-id \
+  UPSTOX_CLIENT_SECRET=secretref:upstox-client-secret \
+  UPSTOX_REDIRECT_URI=secretref:upstox-redirect-uri
 
 echo "Done. Give it ~30-60s, then check: az containerapp revision list --name $APP_NAME --resource-group $RESOURCE_GROUP -o table"
