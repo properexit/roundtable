@@ -445,14 +445,6 @@
     <h1>Multi-agent investment research</h1>
     <div class="tagline">A News Analyst, a Fundamentals Analyst, and a Risk Manager independently research a stock, then a Portfolio Manager synthesizes their views into a recommendation that a human has to approve before anything happens.</div>
     <div class="disclaimer modal-disclaimer"><span class="dot">&#9679;</span><span>Research and education only. No real orders are ever placed, and nothing here is investment advice.</span></div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="track-record-info-modal" hidden>
-  <div class="modal-box">
-    <button class="modal-close" id="track-record-info-close-btn" aria-label="Close">&times;</button>
-    <h1>About the track record</h1>
-    <div class="tagline">The track record below follows your real Upstox holdings, refreshed daily -- nothing to show until you actually hold something, and a new purchase starts appearing here on its own, no dummy example stocks involved.</div>
     <div class="modal-hint">Enter a ticker in the bar above, then run the roundtable to see analyst output here.</div>
   </div>
 </div>
@@ -1208,23 +1200,19 @@
   function openModal(id) {
     el(id).hidden = false;
   }
-  function wireModal(overlayId, closeBtnId, onClose) {
-    const close = () => { closeModal(overlayId); if (onClose) onClose(); };
-    el(closeBtnId).addEventListener("click", close);
+  function wireModal(overlayId, closeBtnId) {
+    el(closeBtnId).addEventListener("click", () => closeModal(overlayId));
     el(overlayId).addEventListener("click", (e) => {
-      if (e.target.id === overlayId) close();
+      if (e.target.id === overlayId) closeModal(overlayId);
     });
-    return close;
   }
-  const closeWelcomeModal = wireModal("welcome-modal", "modal-close-btn", () => openModal("track-record-info-modal"));
-  wireModal("track-record-info-modal", "track-record-info-close-btn");
+  wireModal("welcome-modal", "modal-close-btn");
   wireModal("architecture-modal", "architecture-close-btn");
   wireModal("track-record-help-modal", "track-record-help-close-btn");
   wireModal("historical-rule-help-modal", "historical-rule-help-close-btn");
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
-    if (!el("welcome-modal").hidden) closeWelcomeModal();
-    if (!el("track-record-info-modal").hidden) closeModal("track-record-info-modal");
+    if (!el("welcome-modal").hidden) closeModal("welcome-modal");
     if (!el("architecture-modal").hidden) closeModal("architecture-modal");
     if (!el("track-record-help-modal").hidden) closeModal("track-record-help-modal");
     if (!el("historical-rule-help-modal").hidden) closeModal("historical-rule-help-modal");

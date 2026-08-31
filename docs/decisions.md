@@ -707,3 +707,16 @@ every "weekly" reference in `eval/tracker.py`'s comments and
 `web/index.html`'s copy to match. No code-logic changes were needed
 beyond the cron expression and comments -- `record_snapshot()` and the
 watchlist-discovery logic were already cadence-agnostic.
+
+## Follow-up: removed the chained second pop-up (2026-08-31)
+The second modal (shown right after closing the welcome modal) existed
+specifically to explain that Track Record's AAPL entry was dummy data.
+That entire rationale is gone now that AAPL was dropped and the
+watchlist is 100% real holdings -- keeping a whole extra modal alive just
+to say "this follows your real holdings" was more friction than
+information at that point, so removed it on request. The one piece of
+it that was still useful either way -- the "Enter a ticker in the bar
+above..." usage hint -- moved back into the welcome modal, where it
+originally lived before this detour. `wireModal` also dropped the
+optional onClose-chaining parameter it grew to support this modal chain,
+since nothing calls it with a third argument anymore.
