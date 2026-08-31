@@ -173,6 +173,7 @@
     top: calc(100% + 8px);
     z-index: 10;
     width: min(300px, 80vw);
+    max-width: calc(100vw - 40px);
     background: var(--bg-raised);
     border: 1px solid var(--panel-border);
     border-radius: var(--radius-sm);
@@ -184,12 +185,9 @@
     color: var(--text-dim);
     text-align: left;
     box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.12s;
-    pointer-events: none;
+    display: none;
   }
-  .info-icon:hover .info-bubble, .info-icon:focus .info-bubble { opacity: 1; visibility: visible; }
+  .info-icon:hover .info-bubble, .info-icon:focus .info-bubble { display: block; }
 
   .card {
     background: var(--panel);
@@ -468,6 +466,14 @@
     <h1>Multi-agent investment research</h1>
     <div class="tagline">A News Analyst, a Fundamentals Analyst, and a Risk Manager independently research a stock, then a Portfolio Manager synthesizes their views into a recommendation that a human has to approve before anything happens.</div>
     <div class="disclaimer modal-disclaimer"><span class="dot">&#9679;</span><span>Research and education only. No real orders are ever placed, and nothing here is investment advice.</span></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="track-record-info-modal" hidden>
+  <div class="modal-box">
+    <button class="modal-close" id="track-record-info-close-btn" aria-label="Close">&times;</button>
+    <h1>About the track record</h1>
+    <div class="tagline">The track record below follows a fixed demo watchlist (AAPL, MSFT, NVDA), not your live portfolio -- that gives it a running comparison against buy and hold, hold cash, and sell short from day one, instead of starting from zero the moment your account connects.</div>
     <div class="modal-hint">Enter a ticker in the bar above, then run the roundtable to see analyst output here.</div>
   </div>
 </div>
@@ -1112,7 +1118,11 @@
     }
 
     const { dates, series } = buildTrackRecordSeries(data.snapshots);
+    const singleSnapshotNote = data.snapshots.length === 1
+      ? `<div class="empty-state" style="margin-bottom:12px;">Only one weekly snapshot recorded so far for ${ticker} -- every series starts at 0.0% until a second snapshot lands and returns can diverge.</div>`
+      : "";
     body.innerHTML = `
+      ${singleSnapshotNote}
       <div class="legend-row" id="track-legend"></div>
       <div class="chart-wrap"><div id="track-chart"></div><div class="chart-tooltip" id="track-tooltip"></div></div>
     `;
@@ -1205,17 +1215,21 @@
   function openModal(id) {
     el(id).hidden = false;
   }
-  function wireModal(overlayId, closeBtnId) {
-    el(closeBtnId).addEventListener("click", () => closeModal(overlayId));
+  function wireModal(overlayId, closeBtnId, onClose) {
+    const close = () => { closeModal(overlayId); if (onClose) onClose(); };
+    el(closeBtnId).addEventListener("click", close);
     el(overlayId).addEventListener("click", (e) => {
-      if (e.target.id === overlayId) closeModal(overlayId);
+      if (e.target.id === overlayId) close();
     });
+    return close;
   }
-  wireModal("welcome-modal", "modal-close-btn");
+  const closeWelcomeModal = wireModal("welcome-modal", "modal-close-btn", () => openModal("track-record-info-modal"));
+  wireModal("track-record-info-modal", "track-record-info-close-btn");
   wireModal("architecture-modal", "architecture-close-btn");
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
-    if (!el("welcome-modal").hidden) closeModal("welcome-modal");
+    if (!el("welcome-modal").hidden) closeWelcomeModal();
+    if (!el("track-record-info-modal").hidden) closeModal("track-record-info-modal");
     if (!el("architecture-modal").hidden) closeModal("architecture-modal");
   });
 
