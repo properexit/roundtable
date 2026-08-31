@@ -376,8 +376,19 @@
     cursor: pointer;
   }
   .modal-close:hover { color: var(--text); filter: none; }
-  .modal-box-wide { max-width: 720px; width: 100%; }
-  .architecture-image-wrap { margin-top: 16px; }
+  .modal-box-wide {
+    max-width: 720px;
+    width: 100%;
+    max-height: calc(100vh - 40px);
+    display: flex;
+    flex-direction: column;
+  }
+  .architecture-image-wrap {
+    margin-top: 16px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;
+  }
   .architecture-image-wrap img { display: block; width: 100%; border-radius: var(--radius-sm); border: 1px solid var(--panel-border); }
   .architecture-placeholder {
     display: none;
