@@ -215,3 +215,23 @@ bash's `source` treats it as one literal string. Confirmed via
 `TableServiceClient.from_connection_string` -- diagnosed the same way the
 earlier OOM and env-inheritance bugs were: read the actual container logs
 rather than guess from the browser's generic "Failed to fetch".
+
+## Milestone: real Upstox account integration verified end-to-end (2026-08-30)
+Confirmed live: site login gate, OAuth handshake with Upstox (authorization
+code flow + CSRF-safe `state`), token persisted in Azure Table Storage, and
+real holdings/positions/funds rendering on daycandle.org behind the login.
+Positions and funds matched the field names assumed from Upstox's public
+docs exactly (`trading_symbol`, `quantity`, `average_price`, `pnl`,
+`product`; `equity`/`commodity` segments with `available_margin` etc.) --
+no frontend changes needed once the data actually flowed.
+
+Three real bugs surfaced and fixed getting here, all logged above as they
+happened rather than smoothed over: secrets added to local `.env` but never
+pushed to the Container App (client-visible as a generic "Failed to fetch"
+masking a server-side 500); a nonexistent Storage Account plus a stale
+Azure CLI token queued up two more layers to peel back; and a connection
+string silently truncated at its first semicolon by naive `bash source`.
+Every one of them was found by reading the actual container logs
+(`az containerapp logs show`) rather than guessing from symptoms -- the
+same diagnostic discipline used earlier for the OOM and env-inheritance
+bugs.
