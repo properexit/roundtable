@@ -152,7 +152,6 @@
 
   .section-title-row { display: flex; align-items: center; gap: 8px; }
   .info-icon {
-    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -163,34 +162,11 @@
     background: transparent;
     color: var(--text-muted);
     padding: 0;
-    cursor: help;
+    cursor: pointer;
     flex-shrink: 0;
   }
   .info-icon-glyph { font-family: Georgia, "Times New Roman", serif; font-style: italic; font-size: 0.68rem; font-weight: 700; line-height: 1; }
   .info-icon:hover, .info-icon:focus-visible { color: var(--text); border-color: var(--text-dim); filter: none; outline: none; }
-  .info-bubble {
-    position: absolute;
-    top: calc(100% + 8px);
-    z-index: 10;
-    width: min(280px, 80vw);
-    max-width: calc(100vw - 40px);
-    background: var(--bg-raised);
-    border: 1px solid var(--panel-border);
-    border-radius: var(--radius-sm);
-    padding: 10px 12px;
-    font-family: var(--sans);
-    font-size: 0.78rem;
-    font-weight: 400;
-    line-height: 1.5;
-    color: var(--text-dim);
-    text-align: left;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-    display: none;
-  }
-  /* Shown/positioned by JS (see positionInfoBubble below), not :hover --
-     a pure CSS anchor can't account for the icon's actual position
-     against the viewport edge, which is what clipped this earlier. */
-  .info-bubble.show { display: block; }
 
   .card {
     background: var(--panel);
@@ -492,6 +468,22 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="track-record-help-modal" hidden>
+  <div class="modal-box">
+    <button class="modal-close" id="track-record-help-close-btn" aria-label="Close">&times;</button>
+    <h1>About track record</h1>
+    <div class="tagline">The real four-agent system, run weekly against your current real Upstox holdings, and logged (see the Analyze section above for a live, on-demand run). Compared against three reference strategies: buy and hold, hold cash, and sell short.</div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="historical-rule-help-modal" hidden>
+  <div class="modal-box">
+    <button class="modal-close" id="historical-rule-help-close-btn" aria-label="Close">&times;</button>
+    <h1>About historical rule check</h1>
+    <div class="tagline">A moving-average crossover strategy, backtested on real historical prices. This is a separate rule-based comparison, not the LLM agents: news and fundamentals data only exist for the last month or so, so the agents themselves cannot be backtested honestly any further back than that.</div>
+  </div>
+</div>
+
 <div class="page">
   <aside class="sidebar" id="real-portfolio">
     <div class="card">
@@ -581,9 +573,8 @@
       <div class="section-head">
         <div class="section-title-row">
           <h2>Track record</h2>
-          <button type="button" class="info-icon" aria-label="About track record">
+          <button type="button" class="info-icon" id="track-record-help-btn" aria-label="About track record">
             <span class="info-icon-glyph">i</span>
-            <span class="info-bubble">The real four-agent system, run weekly against your current real Upstox holdings, and logged (see the Analyze section above for a live, on-demand run). Compared against three reference strategies: buy and hold, hold cash, and sell short.</span>
           </button>
         </div>
       </div>
@@ -599,9 +590,8 @@
         <div class="section-head" style="margin-bottom: 14px;">
           <div class="section-title-row">
             <h2 style="font-size: 0.95rem;">Historical rule check</h2>
-            <button type="button" class="info-icon" aria-label="About historical rule check">
+            <button type="button" class="info-icon" id="historical-rule-help-btn" aria-label="About historical rule check">
               <span class="info-icon-glyph">i</span>
-              <span class="info-bubble">A moving-average crossover strategy, backtested on real historical prices. This is a separate rule-based comparison, not the LLM agents: news and fundamentals data only exist for the last month or so, so the agents themselves cannot be backtested honestly any further back than that.</span>
             </button>
           </div>
         </div>
@@ -1229,11 +1219,15 @@
   const closeWelcomeModal = wireModal("welcome-modal", "modal-close-btn", () => openModal("track-record-info-modal"));
   wireModal("track-record-info-modal", "track-record-info-close-btn");
   wireModal("architecture-modal", "architecture-close-btn");
+  wireModal("track-record-help-modal", "track-record-help-close-btn");
+  wireModal("historical-rule-help-modal", "historical-rule-help-close-btn");
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     if (!el("welcome-modal").hidden) closeWelcomeModal();
     if (!el("track-record-info-modal").hidden) closeModal("track-record-info-modal");
     if (!el("architecture-modal").hidden) closeModal("architecture-modal");
+    if (!el("track-record-help-modal").hidden) closeModal("track-record-help-modal");
+    if (!el("historical-rule-help-modal").hidden) closeModal("historical-rule-help-modal");
   });
 
   el("architecture-btn").addEventListener("click", () => openModal("architecture-modal"));
@@ -1242,38 +1236,13 @@
     el("architecture-placeholder").style.display = "block";
   });
 
-  // ============================================================
-  // Info-icon popovers -- shown/positioned by JS, not pure CSS :hover.
-  // The bubble is measured after showing, then clamped so its left edge
-  // never sits closer than 12px to either side of the viewport -- fixes
-  // real in-browser overflow: an icon positioned near the left edge of
-  // its row (e.g. right after a short "Track record" heading) combined
-  // with a centered CSS anchor pushed the bubble left of the viewport,
-  // where overflow-x:hidden then clipped it and made half the text
-  // unreadable.
-  function positionInfoBubble(icon) {
-    const bubble = icon.querySelector(".info-bubble");
-    if (!bubble) return;
-    bubble.style.left = "0px";
-    bubble.classList.add("show");
-    const iconRect = icon.getBoundingClientRect();
-    const bubbleRect = bubble.getBoundingClientRect();
-    const margin = 12;
-    const iconCenter = iconRect.left + iconRect.width / 2;
-    let desiredLeft = iconCenter - bubbleRect.width / 2;
-    desiredLeft = Math.max(margin, Math.min(desiredLeft, window.innerWidth - bubbleRect.width - margin));
-    bubble.style.left = `${desiredLeft - iconRect.left}px`;
-  }
-  function hideInfoBubble(icon) {
-    const bubble = icon.querySelector(".info-bubble");
-    if (bubble) bubble.classList.remove("show");
-  }
-  document.querySelectorAll(".info-icon").forEach((icon) => {
-    icon.addEventListener("mouseenter", () => positionInfoBubble(icon));
-    icon.addEventListener("mouseleave", () => hideInfoBubble(icon));
-    icon.addEventListener("focus", () => positionInfoBubble(icon));
-    icon.addEventListener("blur", () => hideInfoBubble(icon));
-  });
+  // Info icons open a small modal instead of a hover popover -- a
+  // hover/focus tooltip anchored to a 16px icon kept getting clipped or
+  // pushed off-screen depending on where the icon landed in the layout;
+  // a modal is centered in the whole viewport, so it has no anchor-point
+  // edge case to get wrong.
+  el("track-record-help-btn").addEventListener("click", () => openModal("track-record-help-modal"));
+  el("historical-rule-help-btn").addEventListener("click", () => openModal("historical-rule-help-modal"));
 
   // ============================================================
   // Init

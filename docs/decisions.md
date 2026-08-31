@@ -661,3 +661,19 @@ asserts an empty watchlist run touches the graph zero times and records
 nothing; `test_record_snapshot_records_only_real_holdings_when_connected`
 asserts the recorded set is exactly the real holdings, no fixed entry
 mixed in.
+
+## Follow-up: replaced the info-icon popover with a modal (2026-08-31)
+The measured-and-clamped JS positioner from the previous entry still
+truncated the popover in real testing (a second screenshot). Rather than
+chase a third positioning fix for a tooltip anchored to a 16px icon --
+which will always have some edge case depending on where that icon lands
+in a responsive layout -- switched to the pattern already used elsewhere
+on this page: a centered modal. `track-record-help-modal` and
+`historical-rule-help-modal` reuse the existing `.modal-overlay`/
+`.modal-box`/`openModal`/`closeModal`/`wireModal` machinery (the same
+one welcome-modal, track-record-info-modal, and architecture-modal use),
+opened by a click on the info icon instead of hover/focus. A modal
+centered in the viewport has no anchor-point edge case to get wrong --
+it doesn't matter where the triggering icon sits in the layout. Removed
+the popover CSS/JS entirely (`.info-bubble`, `positionInfoBubble`,
+`hideInfoBubble`) rather than leaving dead code behind.
