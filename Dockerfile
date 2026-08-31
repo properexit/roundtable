@@ -6,6 +6,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
+COPY eval/ ./eval/
 
 # Portfolio/audit state -- see docs/decisions.md for the note on swapping
 # this for Table Storage so it survives container restarts/scale-out.
