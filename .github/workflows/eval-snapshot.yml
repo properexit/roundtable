@@ -1,12 +1,18 @@
-name: Weekly Eval Snapshot
+name: Daily Eval Snapshot
 
 # Runs the analysis-only graph (no trade execution) against the eval
-# watchlist once a week and records the decisions to Table Storage --
-# see eval/tracker.py. workflow_dispatch lets it be triggered manually
-# too, for testing without waiting for the schedule.
+# watchlist once a day and records the decisions to Table Storage -- see
+# eval/tracker.py. Daily rather than weekly on purpose: news genuinely
+# moves prices day to day, so a once-a-week sample was too coarse to mean
+# much as an investor-facing track record, and it also meant missing the
+# one weekly run (the Upstox token expires daily -- see
+# upstox_auth_store.py) skipped real-holdings tracking for a full week.
+# Daily gives many more chances to land on a day the token is fresh.
+# workflow_dispatch lets it be triggered manually too, for testing
+# without waiting for the schedule.
 on:
   schedule:
-    - cron: "0 6 * * 1"  # Monday 06:00 UTC
+    - cron: "0 6 * * *"  # Every day, 06:00 UTC (11:30 AM IST)
   workflow_dispatch: {}
 
 jobs:

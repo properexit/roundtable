@@ -452,7 +452,7 @@
   <div class="modal-box">
     <button class="modal-close" id="track-record-info-close-btn" aria-label="Close">&times;</button>
     <h1>About the track record</h1>
-    <div class="tagline">The track record below follows your real Upstox holdings, refreshed weekly -- nothing to show until you actually hold something, and a new purchase starts appearing here on its own, no dummy example stocks involved.</div>
+    <div class="tagline">The track record below follows your real Upstox holdings, refreshed daily -- nothing to show until you actually hold something, and a new purchase starts appearing here on its own, no dummy example stocks involved.</div>
     <div class="modal-hint">Enter a ticker in the bar above, then run the roundtable to see analyst output here.</div>
   </div>
 </div>
@@ -472,7 +472,7 @@
   <div class="modal-box">
     <button class="modal-close" id="track-record-help-close-btn" aria-label="Close">&times;</button>
     <h1>About track record</h1>
-    <div class="tagline">The real four-agent system, run weekly against your current real Upstox holdings, and logged (see the Analyze section above for a live, on-demand run). Compared against three reference strategies: buy and hold, hold cash, and sell short.</div>
+    <div class="tagline">The real four-agent system, run daily against your current real Upstox holdings, and logged (see the Analyze section above for a live, on-demand run). Compared against three reference strategies: buy and hold, hold cash, and sell short.</div>
   </div>
 </div>
 
@@ -1074,7 +1074,7 @@
     }
     if (!res.ok) {
       el("track-record-empty").textContent = res.status === 404
-        ? "Track record isn't live yet. The weekly snapshot job has not recorded any data, or this endpoint is not deployed yet."
+        ? "Track record isn't live yet. The daily snapshot job has not recorded any data, or this endpoint is not deployed yet."
         : `Could not load track record (server returned ${res.status}).`;
       return;
     }
@@ -1106,13 +1106,13 @@
     const body = el("track-record-body");
 
     if (!data || !data.snapshots || data.snapshots.length === 0) {
-      body.innerHTML = `<div class="empty-state">No snapshots recorded yet for ${ticker}. This updates weekly as the system tracks its own calls against the market.</div>`;
+      body.innerHTML = `<div class="empty-state">No snapshots recorded yet for ${ticker}. This updates daily as the system tracks its own calls against the market.</div>`;
       return;
     }
 
     const { dates, series } = buildTrackRecordSeries(data.snapshots);
     const singleSnapshotNote = data.snapshots.length === 1
-      ? `<div class="empty-state" style="margin-bottom:12px;">Only one weekly snapshot recorded so far for ${ticker} -- every series starts at 0.0% until a second snapshot lands and returns can diverge.</div>`
+      ? `<div class="empty-state" style="margin-bottom:12px;">Only one snapshot recorded so far for ${ticker} -- every series starts at 0.0% until a second snapshot lands and returns can diverge.</div>`
       : "";
     body.innerHTML = `
       ${singleSnapshotNote}

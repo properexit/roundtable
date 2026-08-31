@@ -9,8 +9,10 @@ comparison against the three naive baselines in eval/baselines.py.
 
 The watchlist is entirely the user's real Upstox long-term holdings,
 refetched fresh on every run -- see _real_holdings_watchlist. There is no
-fixed/dummy entry: a week where the Upstox token isn't fresh at snapshot
-time (it expires daily) simply records nothing, for any ticker.
+fixed/dummy entry: a day where the Upstox token isn't fresh at snapshot
+time simply records nothing, for any ticker. Runs daily, not weekly --
+news moves prices day to day, and a weekly sample was too coarse to be a
+meaningful track record from an investor's point of view.
 
 This exists instead of a classic historical backtest because the News/
 Sentiment agent's data source (NewsAPI free tier) only covers the last
@@ -46,12 +48,14 @@ TABLE_NAME = "EvalSnapshots"
 # all, for any ticker. That's a known, deliberate consequence, not a bug.
 BASE_WATCHLIST: list[tuple[str, str]] = []
 
-# Max tickers pulled from real holdings per run. Each one costs
-# one NewsAPI/Marketaux call and one Azure OpenAI round trip per agent, and
-# an unbounded real portfolio could quietly blow through the shared
-# free-tier quota this already runs close to -- see the WATCHLIST history
-# in docs/decisions.md. Ten is comfortably above any real holdings list
-# this project has seen so far.
+# Max tickers pulled from real holdings per run. Each one costs one
+# NewsAPI/Marketaux call and one Azure OpenAI round trip per agent, and
+# this now runs once a DAY (see .github/workflows/eval-snapshot.yml), not
+# once a week -- so the daily quota math is real: NewsAPI and Marketaux's
+# free tiers are both 100 requests/day, shared with whatever public
+# traffic hits /analyze the same day. Ten holdings is comfortably below
+# that ceiling for a personal-scale portfolio; revisit this cap (or move
+# off the free tiers) before it grows much past that.
 MAX_REAL_HOLDINGS_TRACKED = 10
 
 
@@ -68,12 +72,12 @@ def _real_holdings_watchlist() -> list[tuple[str, str]]:
     already does for its ticker-suggestions datalist.
 
     Returns [] whenever the Upstox token isn't valid at snapshot time. It
-    expires daily (see upstox_auth_store.py) and this runs unattended on a
-    weekly schedule, so most runs will not land on a day with a fresh
-    login -- that's expected, not an error, and it means a week can record
-    nothing at all (there is no fixed fallback ticker). Holdings pick back
-    up automatically whenever a run does land on a day the token is still
-    valid.
+    expires daily (see upstox_auth_store.py) and this runs unattended once
+    a day, so a run only picks up real holdings on days there's been a
+    fresh login -- that's expected, not an error, and it means a given day
+    can record nothing at all (there is no fixed fallback ticker). Running
+    daily instead of weekly means far more chances to land on a day the
+    token is still valid than a single once-a-week shot did.
     """
     result = upstox_account.get_real_holdings()
     if not result.get("connected"):

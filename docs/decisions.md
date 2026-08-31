@@ -677,3 +677,33 @@ centered in the viewport has no anchor-point edge case to get wrong --
 it doesn't matter where the triggering icon sits in the layout. Removed
 the popover CSS/JS entirely (`.info-bubble`, `positionInfoBubble`,
 `hideInfoBubble`) rather than leaving dead code behind.
+
+## Follow-up: weekly to daily snapshot cadence (2026-08-31)
+Fair pushback: weekly was too coarse to mean anything from an investor's
+point of view -- news genuinely moves prices day to day, and a single
+data point a week can't reflect that. The original weekly cadence was
+chosen before real-portfolio tracking existed, specifically to protect a
+free-tier API quota against a fixed 3-ticker watchlist (see the
+WATCHLIST entry from earlier today); now that the watchlist is real
+holdings (capped at `MAX_REAL_HOLDINGS_TRACKED = 10`), the quota math for
+daily still comfortably holds at personal-portfolio scale: NewsAPI and
+Marketaux's free tiers are both 100 requests/day, so even at the full
+10-ticker cap this uses at most 10 of that, shared with whatever public
+demo traffic the site gets that day. Azure OpenAI cost scales the same
+way (roughly 7x versus weekly, since it's 4 agent calls per ticker per
+run) -- worth knowing, not a hard blocker at this portfolio size, but the
+`MAX_REAL_HOLDINGS_TRACKED` cap is the lever to pull if either quota
+starts running tight.
+
+Genuine side benefit beyond the investor-relevance argument: the Upstox
+token expires daily, so weekly cadence meant missing the single Monday
+run skipped real-holdings tracking for a full week. Daily gives many more
+chances to land on a day the token happens to be fresh.
+
+Changed: `.github/workflows/eval-snapshot.yml`'s cron from
+`0 6 * * 1` (Monday only) to `0 6 * * *` (every day, still 06:00 UTC /
+11:30 AM IST), renamed the workflow to "Daily Eval Snapshot", and updated
+every "weekly" reference in `eval/tracker.py`'s comments and
+`web/index.html`'s copy to match. No code-logic changes were needed
+beyond the cron expression and comments -- `record_snapshot()` and the
+watchlist-discovery logic were already cadence-agnostic.
