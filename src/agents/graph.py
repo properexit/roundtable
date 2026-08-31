@@ -47,6 +47,7 @@ class RoundtableState(TypedDict, total=False):
     proposal_id: Optional[str]
     human_decision: Optional[dict]
     execution_result: Optional[dict]
+    real_position_context: Optional[str]
 
 
 def _tool_result_to_dict(raw) -> dict:
@@ -75,7 +76,7 @@ async def _news_node(state: RoundtableState) -> dict:
 
 async def _draft_node(state: RoundtableState) -> dict:
     draft = await portfolio_manager.draft_recommendation(
-        state["ticker"], state["fundamentals"], state["news"]
+        state["ticker"], state["fundamentals"], state["news"], state.get("real_position_context")
     )
     return {
         "draft_action": draft.action,
@@ -98,7 +99,8 @@ async def _final_node(state: RoundtableState) -> dict:
         rationale=state["draft_rationale"],
     )
     final = await portfolio_manager.finalize_recommendation(
-        state["ticker"], state["fundamentals"], state["news"], state["risk"], draft
+        state["ticker"], state["fundamentals"], state["news"], state["risk"], draft,
+        state.get("real_position_context"),
     )
     return {
         "final_action": final.action,

@@ -121,6 +121,19 @@
   .empty-state { color: var(--text-dim); font-size: 0.9rem; text-align: center; padding: 40px 0; }
   footer { color: var(--text-dim); font-size: 0.78rem; text-align: center; margin-top: 40px; }
   footer a { color: var(--text-dim); }
+  .context-badge {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    color: var(--accent);
+    font-size: 0.8rem;
+    margin-top: 10px;
+    padding: 6px 10px;
+    background: rgba(91,140,255,0.08);
+    border: 1px solid rgba(91,140,255,0.25);
+    border-radius: 6px;
+  }
+  .context-badge.show { display: flex; }
 
   .real-section { margin-top: 40px; }
   .real-section .section-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
@@ -187,6 +200,7 @@
       <button id="analyze-btn">Run Roundtable</button>
     </div>
     <div class="status-line" id="status-line"><div class="spinner"></div><span id="status-text">Analysts are convening...</span></div>
+    <div class="context-badge" id="context-badge">Included your real Upstox position as context for the Portfolio Manager.</div>
   </div>
 
   <div id="results">
@@ -320,6 +334,7 @@
     el("approval-row").style.display = "none";
     el("execute-status").classList.remove("active");
     el("execute-status").textContent = "";
+    el("context-badge").classList.remove("show");
   }
 
   function renderAgent(cardId, bodyId, badgeId, text) {
@@ -340,15 +355,29 @@
     el("analyze-btn").disabled = true;
     showStatus("Fundamentals + News analysts researching in parallel...");
 
+    // If you're logged in (My Real Portfolio section), your session token
+    // rides along here too -- the backend only folds your real Upstox
+    // position into the analysis when this is present and valid. Logged
+    // out, this header is simply omitted and nothing changes.
+    const headers = { "Content-Type": "application/json" };
+    const sessionToken = getSessionToken();
+    if (sessionToken) headers["Authorization"] = `Bearer ${sessionToken}`;
+
     try {
       const res = await fetch(`${API_BASE}/analyze`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ ticker, company_name: company }),
       });
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       const data = await res.json();
       currentThreadId = data.thread_id;
+
+      if (data.used_real_context) {
+        el("context-badge").classList.add("show");
+      } else {
+        el("context-badge").classList.remove("show");
+      }
 
       renderAgent("fundamentals-card", "fundamentals-body", "fundamentals-badge", data.fundamentals);
       renderAgent("news-card", "news-body", "news-badge", data.news);

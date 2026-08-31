@@ -56,9 +56,16 @@ after risk review. Adjust the action or quantity if the risk assessment warrants
 and conviction isn't strong). State confidence honestly -- 'high' should be rare."""
 
 
-async def draft_recommendation(ticker: str, fundamentals: str, news: str) -> DraftRecommendation:
+async def draft_recommendation(
+    ticker: str,
+    fundamentals: str,
+    news: str,
+    real_position_context: str | None = None,
+) -> DraftRecommendation:
     llm = get_llm().with_structured_output(DraftRecommendation)
     user_prompt = f"Ticker: {ticker}\n\nFundamentals Analyst:\n{fundamentals}\n\nNews/Sentiment Analyst:\n{news}"
+    if real_position_context:
+        user_prompt += f"\n\n{real_position_context}"
     return await llm.ainvoke([
         {"role": "system", "content": DRAFT_SYSTEM_PROMPT},
         {"role": "user", "content": user_prompt},
@@ -66,7 +73,12 @@ async def draft_recommendation(ticker: str, fundamentals: str, news: str) -> Dra
 
 
 async def finalize_recommendation(
-    ticker: str, fundamentals: str, news: str, risk: str, draft: DraftRecommendation
+    ticker: str,
+    fundamentals: str,
+    news: str,
+    risk: str,
+    draft: DraftRecommendation,
+    real_position_context: str | None = None,
 ) -> FinalRecommendation:
     llm = get_llm().with_structured_output(FinalRecommendation)
     user_prompt = (
@@ -76,6 +88,8 @@ async def finalize_recommendation(
         f"Draft recommendation: {draft.action} {draft.quantity} shares -- {draft.rationale}\n\n"
         f"Risk Manager assessment:\n{risk}"
     )
+    if real_position_context:
+        user_prompt += f"\n\n{real_position_context}"
     return await llm.ainvoke([
         {"role": "system", "content": FINAL_SYSTEM_PROMPT},
         {"role": "user", "content": user_prompt},

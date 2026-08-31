@@ -235,3 +235,36 @@ Every one of them was found by reading the actual container logs
 (`az containerapp logs show`) rather than guessing from symptoms -- the
 same diagnostic discipline used earlier for the OOM and env-inheritance
 bugs.
+
+## Feature: real Upstox position as context for the Portfolio Manager (2026-08-30)
+When you're logged in (site session token present) and run the roundtable
+on a ticker, `/analyze` now checks your real Upstox holdings/positions for
+that exact ticker and, if found, folds a one-line summary into both the
+draft and final Portfolio Manager prompts -- e.g. "the user already holds
+15 shares of X at an average price of Y" -- so the agent can reason about
+concentration or whether adding to / trimming a real position makes sense.
+
+### Why this stayed gated behind login, not just "always on"
+`/analyze` is the public, unauthenticated demo -- deliberately so, it's the
+thing anyone visiting the site can try. If real-position lookup ran
+unconditionally, anyone could learn my real holdings just by running an
+analysis on a ticker I own. Scoped instead to: real context only gets
+computed when the request carries a valid site session token (checked the
+same way as every other protected route). An anonymous request gets
+`real_position_context: None` threaded through the graph, which is a no-op
+for the prompts -- byte-for-byte the same analysis as before this feature
+existed. Verified both paths (with and without a valid session, plus a
+garbage/invalid token, which is silently treated as anonymous rather than
+erroring) with FastAPI's TestClient against a stubbed graph.
+
+### Known limitation: ticker matching is exact-string against NSE/BSE symbols
+Real position lookup matches the entered ticker against Upstox's own
+`trading_symbol` field exactly (case-insensitive). My real holdings are
+Indian-market symbols (e.g. "PNB", "SAGILITY"); the demo mostly analyzes
+US tickers via yfinance (AAPL, NVDA, ...). A match only happens when what's
+typed into "Run Roundtable" is also my exact real trading symbol -- not
+attempting fuzzy/cross-market matching between two genuinely different
+ticker namespaces. Distinguished "not connected to Upstox" (adds nothing
+to the prompt) from "connected, checked, confirmed no position" (adds an
+explicit "no position" line) rather than collapsing both into silence --
+the second case is real information the agent should have.

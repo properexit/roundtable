@@ -51,3 +51,61 @@ def get_real_positions() -> dict:
 
 def get_real_funds() -> dict:
     return _get("/user/get-funds-and-margin")
+
+def find_real_position(ticker: str):
+    """
+    Looks for `ticker` among your real holdings and positions (exact,
+    case-insensitive match against Upstox's own trading_symbol). Returns
+    {"kind": "holding" | "position", ...the raw entry} on a match, or None.
+
+    This is a plain string match against NSE/BSE trading symbols (e.g.
+    "SAGILITY", "PNB") -- the roundtable demo mostly analyzes US tickers
+    via yfinance (AAPL, NVDA, ...). A match only happens when the ticker
+    typed into "Run Roundtable" is also your real trading_symbol. That's a
+    real limitation of pairing a US-market demo with an Indian brokerage
+    account, not a bug being papered over.
+    """
+    ticker = ticker.strip().upper()
+    for result, kind in ((get_real_holdings(), "holding"), (get_real_positions(), "position")):
+        if not result.get("connected"):
+            continue
+        for entry in result.get("data") or []:
+            if (entry.get("trading_symbol") or "").upper() == ticker:
+                return {"kind": kind, **entry}
+    return None
+
+
+def real_position_context_line(ticker: str) -> str | None:
+    """
+    One-line, LLM-ready summary of your real position in `ticker` for the
+    Portfolio Manager agent to factor in -- or None, meaning "add nothing".
+
+    None specifically means "not connected to Upstox right now" -- as
+    opposed to "connected, checked, and confirmed no position", which
+    returns an explicit line saying so. Collapsing those two into one
+    "nothing to add" case would let the agent's prompt silently assume no
+    position when the truth is just "we don't currently know."
+    """
+    holdings = get_real_holdings()
+    positions = get_real_positions()
+    if not holdings.get("connected") and not positions.get("connected"):
+        return None
+
+    match = find_real_position(ticker)
+    if match is None:
+        return (
+            f"Note: the user has no existing real brokerage position in {ticker} "
+            f"(checked live via their connected Upstox account)."
+        )
+
+    qty = match.get("quantity")
+    avg = match.get("average_price")
+    pnl = match.get("pnl")
+    return (
+        f"Note: the user has a real brokerage {match['kind']} of {qty} shares of "
+        f"{ticker} at an average price of {avg} (P&L: {pnl}). This is real money, "
+        f"entirely separate from this system's simulated portfolio -- use it only "
+        f"as context (existing concentration, whether adding to or trimming a real "
+        f"position makes sense), never as something this system will execute."
+    )
+

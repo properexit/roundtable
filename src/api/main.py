@@ -23,7 +23,7 @@ import os
 import uuid
 from urllib.parse import quote
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from langgraph.types import Command
@@ -75,12 +75,30 @@ async def get_portfolio():
 
 
 @app.post("/analyze")
-async def analyze(req: AnalyzeRequest):
+async def analyze(req: AnalyzeRequest, authorization: str | None = Header(default=None)):
+    """
+    Public and unauthenticated by design -- this is the open demo. Real
+    Upstox holdings only ever get folded into the analysis when the caller
+    also sends a valid site session token (i.e. you're logged in when you
+    click "Run Roundtable"); an anonymous visitor gets exactly the same
+    analysis as before, with nothing about your real account touched.
+    """
+    real_position_context = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.removeprefix("Bearer ")
+        if auth.verify_session_token(token):
+            real_position_context = upstox_account.real_position_context_line(req.ticker.upper())
+
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
 
     result = await _graph.ainvoke(
-        {"ticker": req.ticker.upper(), "company_name": req.company_name}, config=config
+        {
+            "ticker": req.ticker.upper(),
+            "company_name": req.company_name,
+            "real_position_context": real_position_context,
+        },
+        config=config,
     )
 
     if "__interrupt__" not in result:
@@ -91,6 +109,7 @@ async def analyze(req: AnalyzeRequest):
             "news": result.get("news"),
             "action": result.get("final_action", "hold"),
             "rationale": result.get("final_rationale"),
+            "used_real_context": real_position_context is not None,
         }
 
     payload = result["__interrupt__"][0].value
@@ -101,6 +120,7 @@ async def analyze(req: AnalyzeRequest):
         "news": result.get("news"),
         "risk": result.get("risk"),
         "recommendation": payload,
+        "used_real_context": real_position_context is not None,
     }
 
 
