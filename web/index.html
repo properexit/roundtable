@@ -3,246 +3,494 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Roundtable — Multi-Agent Investment Research</title>
+<title>Roundtable | Multi-Agent Investment Research</title>
 <style>
   :root {
-    --bg: #0b0e14;
-    --panel: #131720;
-    --panel-border: #232838;
-    --text: #e6e9ef;
-    --text-dim: #9aa3b5;
+    --bg: #0a0c10;
+    --bg-raised: #10131a;
+    --panel: #12151c;
+    --panel-border: #21252f;
+    --panel-border-soft: rgba(255,255,255,0.06);
+    --text: #eceef2;
+    --text-dim: #8b93a3;
+    --text-muted: #5c6474;
     --accent: #5b8cff;
+    --accent-dim: rgba(91,140,255,0.12);
+
+    /* Signal colors: kept for continuity with existing badges, which pair
+       color with a text label (bullish/bearish/neutral) as the primary
+       channel, not color alone. */
     --bullish: #3ecf8e;
     --bearish: #ff6b6b;
     --neutral: #d6b656;
-    --mono: "SF Mono", "Roboto Mono", Consolas, monospace;
+
+    /* Chart series colors: validated for colorblind-safe adjacent contrast
+       against this page's dark surface (see docs/decisions.md). Not the
+       same palette as the signal badges above on purpose -- these carry
+       identity across four simultaneous series, so they were checked
+       specifically for that. */
+    --series-agent:   #3987e5;
+    --series-buyhold: #199e70;
+    --series-cash:    #c98500;
+    --series-short:   #d95926;
+
+    --mono: "SF Mono", "Roboto Mono", ui-monospace, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --radius: 10px;
+    --radius-sm: 7px;
   }
   * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
   body {
     margin: 0;
     background: var(--bg);
     color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-    line-height: 1.5;
+    font-family: var(--sans);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 80px; }
+  a { color: inherit; }
 
-  header { margin-bottom: 28px; }
-  h1 { font-size: 1.7rem; margin: 0 0 4px; letter-spacing: -0.01em; }
-  .tagline { color: var(--text-dim); font-size: 0.95rem; }
+  /* --- Page layout: sidebar + main column --- */
+  .page { max-width: 1180px; margin: 0 auto; padding: 24px 20px 0; display: flex; gap: 28px; align-items: flex-start; }
+  .sidebar {
+    width: 272px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 90px;
+  }
+  .wrap { flex: 1; min-width: 0; max-width: 760px; margin: 0; padding: 0 0 80px; }
+
+  @media (max-width: 900px) {
+    .page { flex-direction: column; padding: 20px 16px 0; }
+    .sidebar { width: 100%; position: static; }
+    .wrap { max-width: none; padding: 0 0 60px; }
+  }
+
+  /* --- Nav --- */
+  nav.topnav {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: rgba(10,12,16,0.85);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--panel-border-soft);
+  }
+  .topnav-inner { max-width: 1180px; margin: 0 auto; padding: 0 20px; }
+  .topnav-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 14px 0;
+  }
+  .topnav-analyze {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+  .topnav-analyze input[type="text"] { flex: 0 1 220px; min-width: 140px; padding: 8px 12px; font-size: 0.85rem; }
+  .topnav-analyze button { padding: 8px 16px; font-size: 0.85rem; flex-shrink: 0; white-space: nowrap; }
+  .nav-docs { display: flex; align-items: center; gap: 8px; }
+  .nav-doc-link {
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--sans);
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+    padding: 7px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--panel-border);
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: filter 0.15s, background 0.15s, color 0.15s;
+  }
+  .nav-doc-link:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+  .nav-doc-link.highlight { background: var(--accent-dim); color: var(--accent); border-color: rgba(91,140,255,0.35); }
+  .nav-doc-link.highlight:hover { filter: brightness(1.1); }
+  .nav-links { display: none; }
+  .nav-links a {
+    text-decoration: none;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 7px 12px;
+    border-radius: 6px;
+    transition: color 0.15s, background 0.15s;
+  }
+  .nav-links a:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+
+  /* --- Header / hero --- */
+  header.hero { padding: 40px 0 8px; }
+  h1 { font-size: 1.65rem; margin: 0 0 6px; letter-spacing: -0.02em; font-weight: 700; }
+  .tagline { color: var(--text-dim); font-size: 0.95rem; max-width: 60ch; }
 
   .disclaimer {
-    background: rgba(214, 182, 86, 0.08);
-    border: 1px solid rgba(214, 182, 86, 0.35);
-    color: #e3ca8a;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    background: rgba(214,182,86,0.06);
+    border: 1px solid rgba(214,182,86,0.22);
+    color: #d8c088;
     font-size: 0.82rem;
-    padding: 10px 14px;
-    border-radius: 8px;
-    margin: 16px 0 24px;
+    padding: 12px 14px;
+    border-radius: var(--radius-sm);
+    margin: 18px 0 28px;
   }
+  .disclaimer .dot { flex-shrink: 0; margin-top: 2px; opacity: 0.9; }
+
+  section { margin-top: 44px; }
+  section:first-of-type { margin-top: 0; }
+  .section-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; gap: 12px; flex-wrap: wrap; }
+  .section-head h2 { font-size: 1.05rem; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+  .section-sub { color: var(--text-muted); font-size: 0.82rem; }
+
+  .section-title-row { display: flex; align-items: center; gap: 8px; }
+  .info-icon {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1px solid var(--text-muted);
+    background: transparent;
+    color: var(--text-muted);
+    padding: 0;
+    cursor: help;
+    flex-shrink: 0;
+  }
+  .info-icon-glyph { font-family: Georgia, "Times New Roman", serif; font-style: italic; font-size: 0.68rem; font-weight: 700; line-height: 1; }
+  .info-icon:hover, .info-icon:focus-visible { color: var(--text); border-color: var(--text-dim); filter: none; outline: none; }
+  .info-bubble {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 8px);
+    z-index: 10;
+    width: min(300px, 80vw);
+    background: var(--bg-raised);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    font-family: var(--sans);
+    font-size: 0.78rem;
+    font-weight: 400;
+    line-height: 1.5;
+    color: var(--text-dim);
+    text-align: left;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.12s;
+    pointer-events: none;
+  }
+  .info-icon:hover .info-bubble, .info-icon:focus .info-bubble { opacity: 1; visibility: visible; }
 
   .card {
     background: var(--panel);
     border: 1px solid var(--panel-border);
-    border-radius: 12px;
-    padding: 20px 22px;
-    margin-bottom: 16px;
+    border-radius: var(--radius);
+    padding: 22px 24px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
   }
 
-  .portfolio-bar {
-    display: flex;
-    gap: 24px;
-    align-items: baseline;
-    flex-wrap: wrap;
-  }
-  .portfolio-bar .stat-label { color: var(--text-dim); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
-  .portfolio-bar .stat-value { font-family: var(--mono); font-size: 1.05rem; }
-
+  /* --- Form controls --- */
   .search-row { display: flex; gap: 10px; flex-wrap: wrap; }
-  input[type="text"] {
-    background: #0e1219;
+  input[type="text"], input[type="password"] {
+    background: var(--bg-raised);
     border: 1px solid var(--panel-border);
     color: var(--text);
     padding: 11px 14px;
-    border-radius: 8px;
-    font-size: 0.95rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.92rem;
     flex: 1;
     min-width: 140px;
+    font-family: var(--sans);
+    transition: border-color 0.15s;
   }
-  input[type="text"]:focus { outline: none; border-color: var(--accent); }
+  input[type="text"]:focus, input[type="password"]:focus { outline: none; border-color: var(--accent); }
   button {
     background: var(--accent);
     color: white;
     border: none;
-    padding: 11px 20px;
-    border-radius: 8px;
-    font-size: 0.95rem;
+    padding: 11px 18px;
+    border-radius: var(--radius-sm);
+    font-size: 0.88rem;
     font-weight: 600;
     cursor: pointer;
+    font-family: var(--sans);
+    transition: filter 0.15s, transform 0.05s;
+    white-space: nowrap;
   }
-  button:hover { filter: brightness(1.08); }
-  button:disabled { background: #3a4152; cursor: not-allowed; }
-  button.secondary { background: #232838; }
-  button.reject { background: #3a2226; color: #ff8b8b; }
+  button:hover { filter: brightness(1.1); }
+  button:active { transform: translateY(1px); }
+  button:disabled { background: #2a3040; color: var(--text-muted); cursor: not-allowed; }
+  button.secondary { background: rgba(255,255,255,0.06); color: var(--text); border: 1px solid var(--panel-border); }
+  button.secondary:hover { background: rgba(255,255,255,0.1); filter: none; }
+  button.reject { background: rgba(255,107,107,0.12); color: #ff9d9d; border: 1px solid rgba(255,107,107,0.3); }
+  button.reject:hover { background: rgba(255,107,107,0.2); filter: none; }
 
-  .status-line { color: var(--text-dim); font-size: 0.88rem; margin-top: 10px; display: none; }
-  .status-line.active { display: flex; align-items: center; gap: 8px; }
+  .status-line { color: var(--text-dim); font-size: 0.85rem; margin-top: 12px; display: none; align-items: center; gap: 8px; }
+  .status-line.active { display: flex; }
   .spinner {
-    width: 14px; height: 14px; border-radius: 50%;
+    width: 13px; height: 13px; border-radius: 50%;
     border: 2px solid var(--panel-border); border-top-color: var(--accent);
     animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  .context-badge {
+    display: none;
+    align-items: center;
+    gap: 7px;
+    color: var(--accent);
+    font-size: 0.8rem;
+    margin-top: 12px;
+    padding: 7px 12px;
+    background: var(--accent-dim);
+    border: 1px solid rgba(91,140,255,0.25);
+    border-radius: var(--radius-sm);
+  }
+  .context-badge.show { display: flex; }
+
+  /* --- Agent result cards --- */
   .agent-card { display: none; }
   .agent-card.show { display: block; }
-  .agent-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-  .agent-name { font-weight: 600; font-size: 0.95rem; }
+  .agent-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 10px; }
+  .agent-name { font-weight: 700; font-size: 0.88rem; }
   .signal-badge {
     font-family: var(--mono);
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
+    font-weight: 700;
     padding: 3px 10px;
     border-radius: 20px;
+    flex-shrink: 0;
   }
   .signal-bullish { background: rgba(62,207,142,0.15); color: var(--bullish); }
   .signal-bearish, .signal-sell { background: rgba(255,107,107,0.15); color: var(--bearish); }
   .signal-neutral, .signal-hold { background: rgba(214,182,86,0.15); color: var(--neutral); }
-  .agent-body { color: var(--text-dim); font-size: 0.9rem; white-space: pre-wrap; }
+  .agent-body { color: var(--text-dim); font-size: 0.87rem; white-space: pre-wrap; }
 
-  .final-card { border-color: var(--accent); }
-  .final-headline { font-size: 1.15rem; font-weight: 700; margin-bottom: 6px; }
-  .final-meta { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 12px; }
+  .final-card { border-color: rgba(91,140,255,0.35); }
+  .final-headline { font-size: 1.1rem; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.01em; }
+  .final-meta { color: var(--text-muted); font-size: 0.82rem; margin-bottom: 12px; }
 
-  .approval-row { display: flex; gap: 10px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+  .approval-row { display: flex; gap: 10px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
   .approval-row input[type="text"] { max-width: 220px; }
 
-  .empty-state { color: var(--text-dim); font-size: 0.9rem; text-align: center; padding: 40px 0; }
-  footer { color: var(--text-dim); font-size: 0.78rem; text-align: center; margin-top: 40px; }
-  footer a { color: var(--text-dim); }
-  .context-badge {
-    display: none;
-    align-items: center;
-    gap: 6px;
-    color: var(--accent);
+  .empty-state { color: var(--text-muted); font-size: 0.88rem; text-align: center; padding: 36px 0; }
+
+  /* --- Track record / eval --- */
+  .ticker-tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+  .ticker-tab {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--panel-border);
+    padding: 6px 14px;
+    border-radius: 20px;
     font-size: 0.8rem;
-    margin-top: 10px;
-    padding: 6px 10px;
-    background: rgba(91,140,255,0.08);
-    border: 1px solid rgba(91,140,255,0.25);
-    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: var(--mono);
   }
-  .context-badge.show { display: flex; }
+  .ticker-tab.active { background: var(--accent-dim); color: var(--accent); border-color: rgba(91,140,255,0.35); }
+  .ticker-tab:hover:not(.active) { border-color: var(--text-muted); color: var(--text); }
 
-  .real-section { margin-top: 40px; }
-  .real-section .section-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-  .real-section h2 { font-size: 1.1rem; margin: 0; }
-  .real-section .section-sub { color: var(--text-dim); font-size: 0.82rem; }
+  .legend-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--text-dim); }
+  .legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+  .legend-swatch.line { border-radius: 0; height: 2px; }
 
+  .chart-svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .chart-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--bg-raised);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    font-size: 0.76rem;
+    font-family: var(--mono);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    opacity: 0;
+    transition: opacity 0.1s;
+    white-space: nowrap;
+    z-index: 5;
+  }
+  .chart-tooltip.show { opacity: 1; }
+  .chart-tooltip .tt-date { color: var(--text-muted); margin-bottom: 4px; }
+  .chart-tooltip .tt-row { display: flex; align-items: center; gap: 6px; }
+  .chart-tooltip .tt-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .chart-wrap { position: relative; }
+
+  .backtest-controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .backtest-controls input { max-width: 140px; }
+  .backtest-summary { display: flex; gap: 28px; flex-wrap: wrap; margin-top: 18px; }
+
+  /* --- My Real Portfolio --- */
   .conn-pill {
     font-family: var(--mono);
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
+    font-weight: 700;
     padding: 3px 10px;
     border-radius: 20px;
   }
   .conn-connected { background: rgba(62,207,142,0.15); color: var(--bullish); }
-  .conn-disconnected { background: rgba(255,107,107,0.15); color: var(--bearish); }
+  .conn-disconnected { background: rgba(255,255,255,0.06); color: var(--text-muted); }
 
-  .real-gate { text-align: center; padding: 10px 0; }
+  .real-gate { text-align: center; padding: 6px 0; }
   .real-gate .search-row { justify-content: center; }
-  .real-gate input[type="password"] {
-    background: #0e1219; border: 1px solid var(--panel-border); color: var(--text);
-    padding: 11px 14px; border-radius: 8px; font-size: 0.95rem; flex: 1; min-width: 140px;
-  }
-  .real-gate input[type="password"]:focus { outline: none; border-color: var(--accent); }
-  .real-error { color: var(--bearish); font-size: 0.85rem; margin-top: 8px; display: none; }
+  .real-error { color: var(--bearish); font-size: 0.83rem; margin-top: 10px; display: none; }
   .real-error.show { display: block; }
 
-  .real-subhead { font-weight: 600; font-size: 0.88rem; margin: 18px 0 8px; }
+  .real-subhead { font-weight: 700; font-size: 0.8rem; margin: 20px 0 8px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
   .real-subhead:first-child { margin-top: 0; }
 
-  table.data-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; font-family: var(--mono); }
-  table.data-table th, table.data-table td {
-    text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--panel-border);
-    white-space: nowrap;
+  .num-pos { color: var(--bullish); }
+  .num-neg { color: var(--bearish); }
+  .real-empty { color: var(--text-muted); font-size: 0.85rem; padding: 8px 0; }
+
+  /* --- Welcome modal --- */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(4,5,8,0.72);
+    backdrop-filter: blur(3px);
   }
-  table.data-table th { color: var(--text-dim); font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; }
-  table.data-table td.num-pos { color: var(--bullish); }
-  table.data-table td.num-neg { color: var(--bearish); }
-  .real-empty { color: var(--text-dim); font-size: 0.85rem; padding: 8px 0; }
+  .modal-overlay[hidden] { display: none; }
+  .modal-box {
+    position: relative;
+    max-width: 520px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius);
+    padding: 30px 30px 26px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+  }
+  .modal-box h1 { font-size: 1.4rem; margin: 0 0 10px; letter-spacing: -0.02em; font-weight: 700; padding-right: 20px; }
+  .modal-box .tagline { color: var(--text-dim); font-size: 0.92rem; }
+  .modal-box .modal-hint { color: var(--text-muted); font-size: 0.83rem; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--panel-border-soft); }
+  .modal-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-size: 1.4rem;
+    line-height: 1;
+    padding: 6px 9px;
+    cursor: pointer;
+  }
+  .modal-close:hover { color: var(--text); filter: none; }
+  .modal-box-wide { max-width: 720px; width: 100%; }
+  .architecture-image-wrap { margin-top: 16px; }
+  .architecture-image-wrap img { display: block; width: 100%; border-radius: var(--radius-sm); border: 1px solid var(--panel-border); }
+  .architecture-placeholder {
+    display: none;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 60px 20px;
+    border: 1px dashed var(--panel-border);
+    border-radius: var(--radius-sm);
+  }
+
+  .modal-disclaimer { margin: 16px 0 0; }
+
+  /* --- Sidebar: My real portfolio --- */
+  .sidebar .card { padding: 18px 18px 20px; }
+  .sidebar-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .sidebar-head h2 { font-size: 0.92rem; margin: 0; font-weight: 700; }
+  .sidebar-sub { color: var(--text-muted); font-size: 0.76rem; margin-bottom: 16px; }
+  .sidebar-sub-bottom { margin: 20px 0 0; padding-top: 14px; border-top: 1px solid var(--panel-border-soft); }
+  .icon-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0; padding: 8px 10px; }
+  .sidebar-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--panel-border-soft); }
+  .sidebar .search-row { flex-direction: column; }
+  .sidebar .search-row input, .sidebar .search-row button { width: 100%; }
+  .sidebar .real-subhead { font-size: 0.72rem; margin: 18px 0 8px; }
+  .sidebar .real-subhead:first-child { margin-top: 0; }
+
+  .side-list { display: flex; flex-direction: column; gap: 8px; }
+  .side-row { background: var(--bg-raised); border: 1px solid var(--panel-border-soft); border-radius: var(--radius-sm); padding: 8px 10px; }
+  .side-row-top { display: flex; justify-content: space-between; align-items: baseline; font-family: var(--mono); font-size: 0.8rem; font-weight: 700; }
+  .side-row-sub { color: var(--text-dim); font-size: 0.74rem; font-family: var(--mono); margin-top: 3px; display: flex; justify-content: space-between; gap: 8px; }
+
+  .side-kv { display: flex; flex-direction: column; gap: 6px; }
+  .side-kv-row { display: flex; justify-content: space-between; gap: 10px; font-size: 0.78rem; font-family: var(--mono); padding: 5px 0; border-bottom: 1px solid var(--panel-border-soft); }
+  .side-kv-row:last-child { border-bottom: none; }
+  .side-kv-row .k { color: var(--text-muted); font-family: var(--sans); }
+
+  @media (max-width: 560px) {
+    .nav-links { display: none; }
+    .topnav-analyze { width: 100%; flex-wrap: wrap; }
+    .topnav-analyze input[type="text"] { flex-basis: 100%; }
+    .topnav-analyze button { width: 100%; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <h1>Roundtable</h1>
-    <div class="tagline">Multi-agent investment research — News, Fundamentals, and Risk analysts synthesized into a human-approved recommendation.</div>
-  </header>
-
-  <div class="disclaimer">
-    Research &amp; education only. This is a simulated $100,000 paper-trading portfolio — no real orders are ever placed, and nothing here is investment advice.
-  </div>
-
-  <div class="card">
-    <div class="portfolio-bar" id="portfolio-bar">
-      <div><div class="stat-label">Cash</div><div class="stat-value" id="pf-cash">—</div></div>
-      <div><div class="stat-label">Positions</div><div class="stat-value" id="pf-positions">—</div></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="search-row">
-      <input type="text" id="ticker-input" placeholder="Ticker (e.g. AAPL)" value="AAPL">
-      <input type="text" id="company-input" placeholder="Company name (e.g. Apple Inc)" value="Apple Inc">
-      <button id="analyze-btn">Run Roundtable</button>
-    </div>
-    <div class="status-line" id="status-line"><div class="spinner"></div><span id="status-text">Analysts are convening...</span></div>
-    <div class="context-badge" id="context-badge">Included your real Upstox position as context for the Portfolio Manager.</div>
-  </div>
-
-  <div id="results">
-    <div class="empty-state" id="empty-state">Enter a ticker above and run the roundtable to see analyst output here.</div>
-
-    <div class="card agent-card" id="fundamentals-card">
-      <div class="agent-header"><div class="agent-name">Fundamentals Analyst</div><div class="signal-badge" id="fundamentals-badge"></div></div>
-      <div class="agent-body" id="fundamentals-body"></div>
-    </div>
-
-    <div class="card agent-card" id="news-card">
-      <div class="agent-header"><div class="agent-name">News &amp; Sentiment Analyst</div><div class="signal-badge" id="news-badge"></div></div>
-      <div class="agent-body" id="news-body"></div>
-    </div>
-
-    <div class="card agent-card" id="risk-card">
-      <div class="agent-header"><div class="agent-name">Risk Manager</div><div class="signal-badge" id="risk-badge"></div></div>
-      <div class="agent-body" id="risk-body"></div>
-    </div>
-
-    <div class="card final-card agent-card" id="final-card">
-      <div class="final-headline" id="final-headline"></div>
-      <div class="final-meta" id="final-meta"></div>
-      <div class="agent-body" id="final-body"></div>
-      <div class="approval-row" id="approval-row" style="display:none;">
-        <input type="text" id="approver-name" placeholder="Your name">
-        <button id="approve-btn">Approve trade</button>
-        <button id="reject-btn" class="reject">Reject</button>
+<nav class="topnav">
+  <div class="topnav-inner">
+    <div class="topnav-row">
+      <div class="nav-docs">
+        <a class="nav-doc-link highlight" href="https://roundtable-api.lemonwater-fd61f0be.germanywestcentral.azurecontainerapps.io/docs" target="_blank" rel="noopener">API docs</a>
+        <button type="button" class="nav-doc-link" id="architecture-btn">Architecture</button>
       </div>
-      <div class="status-line" id="execute-status"></div>
+      <div class="topnav-analyze">
+        <input type="text" id="ticker-input" list="ticker-suggestions" placeholder="Ticker (e.g. AAPL)" value="AAPL">
+        <datalist id="ticker-suggestions"></datalist>
+        <button id="analyze-btn">Analyze</button>
+      </div>
     </div>
   </div>
+</nav>
 
-  <div class="real-section">
-    <div class="section-heading">
-      <h2>My Real Portfolio (Upstox)</h2>
-      <span class="conn-pill" id="real-conn-pill">checking...</span>
+<div class="modal-overlay" id="welcome-modal">
+  <div class="modal-box">
+    <button class="modal-close" id="modal-close-btn" aria-label="Close">&times;</button>
+    <h1>Multi-agent investment research</h1>
+    <div class="tagline">A News Analyst, a Fundamentals Analyst, and a Risk Manager independently research a stock, then a Portfolio Manager synthesizes their views into a recommendation that a human has to approve before anything happens.</div>
+    <div class="disclaimer modal-disclaimer"><span class="dot">&#9679;</span><span>Research and education only. No real orders are ever placed, and nothing here is investment advice.</span></div>
+    <div class="modal-hint">Enter a ticker in the bar above, then run the roundtable to see analyst output here.</div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="architecture-modal" hidden>
+  <div class="modal-box modal-box-wide">
+    <button class="modal-close" id="architecture-close-btn" aria-label="Close">&times;</button>
+    <h1>System architecture</h1>
+    <div class="architecture-image-wrap">
+      <img id="architecture-img" src="architecture.png" alt="Roundtable system architecture diagram">
+      <div class="architecture-placeholder" id="architecture-placeholder">Architecture diagram coming soon.</div>
     </div>
-    <div class="section-sub">Read-only. Nothing on this page can place, modify, or cancel a real order — see the disclaimer below.</div>
+  </div>
+</div>
 
+<div class="page">
+  <aside class="sidebar" id="real-portfolio">
     <div class="card">
-      <!-- Step 1: site login -->
+      <div class="sidebar-head">
+        <h2>My portfolio</h2>
+        <span class="conn-pill" id="real-conn-pill">checking</span>
+      </div>
+
       <div id="real-gate" class="real-gate">
         <div class="search-row">
           <input type="password" id="site-password" placeholder="Site password">
@@ -251,19 +499,15 @@
         <div class="real-error" id="site-login-error">Incorrect password.</div>
       </div>
 
-      <!-- Step 2: connect Upstox (shown once logged in, if not yet connected) -->
-      <div id="real-connect" style="display:none; text-align:center; padding: 10px 0;">
+      <div id="real-connect" style="display:none; text-align:center; padding: 6px 0;">
         <p class="section-sub" style="margin-bottom: 14px;">Logged in. Connect your Upstox account to pull real holdings, positions, and funds.</p>
-        <button id="upstox-connect-btn">Connect Upstox</button>
-        <button id="site-logout-btn" class="secondary" style="margin-left: 8px;">Log out</button>
+        <button id="upstox-connect-btn" style="width:100%;">Connect Upstox</button>
+        <button id="site-logout-btn" class="secondary icon-btn" title="Log out" aria-label="Log out" style="margin-top: 8px; width: 100%;"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg></button>
       </div>
 
-      <!-- Step 3: real data (shown once Upstox is connected) -->
       <div id="real-data" style="display:none;">
-        <div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom: 4px;">
-          <button id="real-refresh-btn" class="secondary">Refresh</button>
-          <button id="site-logout-btn-2" class="secondary">Log out</button>
-        </div>
+        <div class="real-subhead" style="margin-top:0;">Equity funds</div>
+        <div id="real-funds"></div>
 
         <div class="real-subhead">Holdings</div>
         <div id="real-holdings"></div>
@@ -271,25 +515,105 @@
         <div class="real-subhead">Positions</div>
         <div id="real-positions"></div>
 
-        <div class="real-subhead">Funds</div>
-        <div id="real-funds"></div>
+        <div class="sidebar-actions">
+          <button id="real-refresh-btn" class="secondary icon-btn" title="Refresh" aria-label="Refresh"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L14 11h7V4l-2.35 2.35z"/></svg></button>
+          <button id="site-logout-btn-2" class="secondary icon-btn" title="Log out" aria-label="Log out"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg></button>
+        </div>
       </div>
 
       <div class="real-error" id="real-fetch-error"></div>
-    </div>
-  </div>
 
-  <footer>
-    Built as a cloud-native multi-agent system: LangGraph orchestration, a custom MCP tool server, Azure OpenAI + Azure AI Language, deployed on Azure Container Apps.
-    <br><a href="https://roundtable-api.lemonwater-fd61f0be.germanywestcentral.azurecontainerapps.io/docs" target="_blank">API docs</a>
-  </footer>
+      <div class="sidebar-sub sidebar-sub-bottom">Read only, via your connected Upstox account. Not visible without logging in.</div>
+    </div>
+
+    <div class="card">
+      <div class="section-sub">Built as a cloud-native multi-agent system: LangGraph orchestration, a custom MCP tool server, Azure OpenAI and Azure AI Language, deployed on Azure Container Apps.</div>
+    </div>
+  </aside>
+
+  <main class="wrap">
+    <section id="analyze">
+      <div class="status-line" id="status-line"><div class="spinner"></div><span id="status-text">Analysts are convening</span></div>
+      <div class="context-badge" id="context-badge">Included your real Upstox position as context for the Portfolio Manager.</div>
+
+      <div id="results">
+        <div class="empty-state" id="empty-state">No analysis yet.</div>
+
+        <div class="card agent-card" id="fundamentals-card">
+          <div class="agent-header"><div class="agent-name">Fundamentals Analyst</div><div class="signal-badge" id="fundamentals-badge"></div></div>
+          <div class="agent-body" id="fundamentals-body"></div>
+        </div>
+
+        <div class="card agent-card" id="news-card">
+          <div class="agent-header"><div class="agent-name">News &amp; Sentiment Analyst</div><div class="signal-badge" id="news-badge"></div></div>
+          <div class="agent-body" id="news-body"></div>
+        </div>
+
+        <div class="card agent-card" id="risk-card">
+          <div class="agent-header"><div class="agent-name">Risk Manager</div><div class="signal-badge" id="risk-badge"></div></div>
+          <div class="agent-body" id="risk-body"></div>
+        </div>
+
+        <div class="card final-card agent-card" id="final-card">
+          <div class="final-headline" id="final-headline"></div>
+          <div class="final-meta" id="final-meta"></div>
+          <div class="agent-body" id="final-body"></div>
+          <div class="approval-row" id="approval-row" style="display:none;">
+            <input type="text" id="approver-name" placeholder="Your name">
+            <button id="approve-btn">Approve trade</button>
+            <button id="reject-btn" class="reject">Reject</button>
+          </div>
+          <div class="status-line" id="execute-status"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="track-record">
+      <div class="section-head">
+        <div class="section-title-row">
+          <h2>Track record</h2>
+          <button type="button" class="info-icon" aria-label="About track record">
+            <span class="info-icon-glyph">i</span>
+            <span class="info-bubble">The real four-agent system, run weekly against a fixed watchlist and logged (see the Analyze section above for a live, on-demand run). Compared against three reference strategies: buy and hold, hold cash, and sell short.</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="ticker-tabs" id="ticker-tabs"></div>
+        <div id="track-record-body">
+          <div class="empty-state" id="track-record-empty">Loading track record.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-head" style="margin-bottom: 14px;">
+          <div class="section-title-row">
+            <h2 style="font-size: 0.95rem;">Historical rule check</h2>
+            <button type="button" class="info-icon" aria-label="About historical rule check">
+              <span class="info-icon-glyph">i</span>
+              <span class="info-bubble">A moving-average crossover strategy, backtested on real historical prices. This is a separate rule-based comparison, not the LLM agents: news and fundamentals data only exist for the last month or so, so the agents themselves cannot be backtested honestly any further back than that.</span>
+            </button>
+          </div>
+        </div>
+        <div class="backtest-controls">
+          <input type="text" id="backtest-ticker" placeholder="Ticker (e.g. AAPL)" value="AAPL">
+          <button id="backtest-btn" class="secondary">Run backtest</button>
+        </div>
+        <div class="status-line" id="backtest-status"><div class="spinner"></div><span>Fetching historical prices</span></div>
+        <div id="backtest-body"></div>
+      </div>
+    </section>
+  </main>
 </div>
 
 <script>
-  // Point this at your deployed backend.
   const API_BASE = "https://roundtable-api.lemonwater-fd61f0be.germanywestcentral.azurecontainerapps.io";
-
   const el = (id) => document.getElementById(id);
+
+  // ============================================================
+  // Roundtable analysis (existing behavior, preserved)
+  // ============================================================
   let currentThreadId = null;
 
   function signalClass(action) {
@@ -303,21 +627,6 @@
     if (!text) return "neutral";
     const m = text.match(/Signal:\s*(bullish|bearish|neutral)/i);
     return m ? m[1].toLowerCase() : "neutral";
-  }
-
-  async function loadPortfolio() {
-    try {
-      const res = await fetch(`${API_BASE}/portfolio`);
-      const data = await res.json();
-      el("pf-cash").textContent = `$${data.cash.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-      const positions = Object.entries(data.positions || {});
-      el("pf-positions").textContent = positions.length
-        ? positions.map(([t, p]) => `${t}: ${p.quantity} @ $${p.avg_cost.toFixed(2)}`).join("  ·  ")
-        : "None";
-    } catch (e) {
-      el("pf-cash").textContent = "unavailable";
-      el("pf-positions").textContent = "unavailable";
-    }
   }
 
   function showStatus(text) {
@@ -348,17 +657,12 @@
 
   async function runAnalysis() {
     const ticker = el("ticker-input").value.trim().toUpperCase();
-    const company = el("company-input").value.trim();
-    if (!ticker || !company) { alert("Enter both a ticker and a company name."); return; }
+    if (!ticker) { alert("Enter a ticker."); return; }
 
     resetResults();
     el("analyze-btn").disabled = true;
-    showStatus("Fundamentals + News analysts researching in parallel...");
+    showStatus("Fundamentals and News analysts researching in parallel");
 
-    // If you're logged in (My Real Portfolio section), your session token
-    // rides along here too -- the backend only folds your real Upstox
-    // position into the analysis when this is present and valid. Logged
-    // out, this header is simply omitted and nothing changes.
     const headers = { "Content-Type": "application/json" };
     const sessionToken = getSessionToken();
     if (sessionToken) headers["Authorization"] = `Bearer ${sessionToken}`;
@@ -367,7 +671,7 @@
       const res = await fetch(`${API_BASE}/analyze`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ ticker, company_name: company }),
+        body: JSON.stringify({ ticker }),
       });
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       const data = await res.json();
@@ -405,10 +709,10 @@
 
   async function submitApproval(approved) {
     const approverName = el("approver-name").value.trim();
-    if (approved && !approverName) { alert("Enter your name to approve a trade -- it goes in the audit log."); return; }
+    if (approved && !approverName) { alert("Enter your name to approve a trade. It goes in the audit log."); return; }
 
     el("execute-status").classList.add("active");
-    el("execute-status").innerHTML = `<div class="spinner"></div><span>${approved ? "Executing" : "Recording rejection"}...</span>`;
+    el("execute-status").innerHTML = `<div class="spinner"></div><span>${approved ? "Executing" : "Recording rejection"}</span>`;
 
     try {
       const res = await fetch(`${API_BASE}/approve`, {
@@ -419,7 +723,6 @@
       const data = await res.json();
       el("execute-status").innerHTML = `<span>Result: ${JSON.stringify(data.execution_result)}</span>`;
       el("approval-row").style.display = "none";
-      loadPortfolio();
     } catch (e) {
       el("execute-status").innerHTML = `<span>Error: ${e.message}</span>`;
     }
@@ -429,9 +732,9 @@
   el("approve-btn").addEventListener("click", () => submitApproval(true));
   el("reject-btn").addEventListener("click", () => submitApproval(false));
 
-  loadPortfolio();
-
-  // --- My Real Portfolio (Upstox) -------------------------------------------
+  // ============================================================
+  // My Real Portfolio (Upstox) -- existing behavior, preserved
+  // ============================================================
   const REAL_SESSION_KEY = "roundtable_session";
 
   function getSessionToken() {
@@ -495,64 +798,73 @@
   function connectUpstox() {
     const token = getSessionToken();
     if (!token) { showRealGate(); return; }
-    // Full-page navigation -- the site session token travels as a query
-    // param here, then rides through Upstox's OAuth `state` param so the
-    // backend can check it again on the way back (see src/api/main.py).
     window.location.href = `${API_BASE}/auth/upstox/login?session=${encodeURIComponent(token)}`;
   }
 
   function fmtNum(v) {
-    return typeof v === "number" ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : (v ?? "—");
+    if (typeof v === "number") return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    return v ?? "None";
   }
 
-  function renderTable(rows, columns) {
+  function pnlSpan(v) {
+    if (typeof v !== "number") return fmtNum(v);
+    const cls = v > 0 ? "num-pos" : (v < 0 ? "num-neg" : "");
+    return `<span class="${cls}">${v >= 0 ? "+" : ""}${fmtNum(v)}</span>`;
+  }
+
+  function renderSideList(rows, topFn, subFn) {
     if (!Array.isArray(rows) || rows.length === 0) return `<div class="real-empty">None.</div>`;
-    const head = columns.map(c => `<th>${c.label}</th>`).join("");
-    const body = rows.map(r => {
-      const cells = columns.map(c => {
-        const raw = r[c.key];
-        let cls = "";
-        if (c.signColor && typeof raw === "number") cls = raw > 0 ? "num-pos" : (raw < 0 ? "num-neg" : "");
-        return `<td class="${cls}">${fmtNum(raw)}</td>`;
-      }).join("");
-      return `<tr>${cells}</tr>`;
-    }).join("");
-    return `<table class="data-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+    const items = rows.map(r => `
+      <div class="side-row">
+        <div class="side-row-top">${topFn(r)}</div>
+        <div class="side-row-sub">${subFn(r)}</div>
+      </div>`).join("");
+    return `<div class="side-list">${items}</div>`;
   }
 
-  function renderKeyValueBlocks(obj) {
-    if (!obj || typeof obj !== "object") return `<div class="real-empty">None.</div>`;
-    const entries = Object.entries(obj);
-    if (entries.length === 0) return `<div class="real-empty">None.</div>`;
-    return entries.map(([segment, values]) => {
-      if (!values || typeof values !== "object") return "";
-      const rows = Object.entries(values)
-        .map(([k, v]) => `<tr><td>${k}</td><td>${fmtNum(v)}</td></tr>`)
-        .join("");
-      return `<div style="margin-bottom:10px;">
-        <div style="color:var(--text-dim); font-size:0.78rem; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:4px;">${segment}</div>
-        <table class="data-table"><tbody>${rows}</tbody></table>
-      </div>`;
-    }).join("");
+  function renderHoldingsSide(rows) {
+    return renderSideList(
+      rows,
+      r => `<span>${r.trading_symbol}</span><span>${fmtNum(r.quantity)} sh</span>`,
+      r => `<span>Avg ${fmtNum(r.average_price)}</span>${pnlSpan(r.pnl)}`,
+    );
   }
 
-  const HOLDINGS_COLUMNS = [
-    { key: "trading_symbol", label: "Symbol" },
-    { key: "quantity", label: "Qty" },
-    { key: "average_price", label: "Avg Price" },
-    { key: "last_price", label: "Last Price" },
-    { key: "pnl", label: "P&L", signColor: true },
-    { key: "day_change_percentage", label: "Day %", signColor: true },
-  ];
+  function renderPositionsSide(rows) {
+    return renderSideList(
+      rows,
+      r => `<span>${r.trading_symbol}</span><span>${fmtNum(r.quantity)} sh</span>`,
+      r => `<span>${r.product || ""}</span>${pnlSpan(r.pnl)}`,
+    );
+  }
 
-  const POSITIONS_COLUMNS = [
-    { key: "trading_symbol", label: "Symbol" },
-    { key: "quantity", label: "Qty" },
-    { key: "average_price", label: "Avg Price" },
-    { key: "last_price", label: "Last Price" },
-    { key: "pnl", label: "P&L", signColor: true },
-    { key: "product", label: "Product" },
-  ];
+  function renderFundsEquitySide(fundsData) {
+    const equity = fundsData && fundsData.equity;
+    if (!equity || typeof equity !== "object") return `<div class="real-empty">None.</div>`;
+    const rows = Object.entries(equity)
+      .map(([k, v]) => `<div class="side-kv-row"><span class="k">${k}</span><span>${fmtNum(v)}</span></div>`)
+      .join("");
+    return `<div class="side-kv">${rows}</div>`;
+  }
+
+  function populateTickerSuggestions(holdings, positions) {
+    // Holdings are always plain NSE/BSE equity (never F&O), so ".NS" is a
+    // safe, correct suffix for yfinance/news routing to resolve them
+    // properly. Positions can be equity OR a derivatives contract (e.g.
+    // "NIFTY24AUGFUT") and there's no reliable field here to tell them
+    // apart, so those are suggested as-is rather than guessing a suffix
+    // that could be wrong.
+    const symbols = new Set();
+    for (const row of holdings || []) {
+      if (row && row.trading_symbol) symbols.add(row.trading_symbol.toUpperCase() + ".NS");
+    }
+    for (const row of positions || []) {
+      if (row && row.trading_symbol) symbols.add(row.trading_symbol.toUpperCase());
+    }
+    el("ticker-suggestions").innerHTML = [...symbols]
+      .map(s => `<option value="${s}"></option>`)
+      .join("");
+  }
 
   async function fetchReal(path) {
     const token = getSessionToken();
@@ -574,21 +886,19 @@
         fetchReal("/portfolio/real/funds"),
       ]);
 
-      // Site session is fine but Upstox's own token is missing/expired --
-      // distinct from a 401, since the backend returns 200 + connected:false
-      // for this case (see src/tools/upstox_account.py).
       if (holdings.connected === false || positions.connected === false || funds.connected === false) {
         showRealConnect();
         return;
       }
 
-      el("real-holdings").innerHTML = renderTable(holdings.data, HOLDINGS_COLUMNS);
-      el("real-positions").innerHTML = renderTable(positions.data, POSITIONS_COLUMNS);
-      el("real-funds").innerHTML = renderKeyValueBlocks(funds.data);
+      el("real-holdings").innerHTML = renderHoldingsSide(holdings.data);
+      el("real-positions").innerHTML = renderPositionsSide(positions.data);
+      el("real-funds").innerHTML = renderFundsEquitySide(funds.data);
+      populateTickerSuggestions(holdings.data, positions.data);
       showRealData();
     } catch (e) {
       if (e.message !== "session-expired") {
-        el("real-fetch-error").textContent = "Couldn't load real portfolio data: " + e.message;
+        el("real-fetch-error").textContent = "Could not load real portfolio data: " + e.message;
         el("real-fetch-error").classList.add("show");
       }
     }
@@ -606,12 +916,320 @@
   el("site-logout-btn-2").addEventListener("click", siteLogout);
   el("real-refresh-btn").addEventListener("click", loadRealData);
 
-  // Clean the ?upstox=connected param Upstox's redirect leaves behind so a
-  // page refresh doesn't look like a fresh callback.
   if (new URLSearchParams(window.location.search).get("upstox") === "connected") {
     window.history.replaceState({}, "", window.location.pathname);
   }
+
+  // ============================================================
+  // Track record + backtest charts
+  //
+  // Hand-rolled inline SVG rather than a charting library: this is a
+  // single-file static page (no build step, no dependency to go stale),
+  // and the chart vocabulary here (a handful of lines plus one bar chart)
+  // is small enough that a library would cost more than it saves. Colors
+  // below were checked for colorblind-safe adjacent contrast against this
+  // page's dark surface (node scripts/validate_palette.js from the
+  // dataviz skill) -- see docs/decisions.md.
+  // ============================================================
+  const CHART_COLORS = {
+    agent: "#3987e5",
+    buyhold: "#199e70",
+    cash: "#c98500",
+    short: "#d95926",
+  };
+
+  function buildTrackRecordSeries(snapshots) {
+    const startPrice = snapshots[0].price;
+    const startCash = 10000;
+    let cash = startCash, shares = 0;
+
+    const dates = [];
+    const agentValues = [], buyHoldValues = [], holdCashValues = [], shortValues = [];
+
+    for (const snap of snapshots) {
+      const price = snap.price;
+      const qty = snap.quantity || 0;
+      if (snap.action === "buy" && qty > 0 && price > 0) {
+        const cost = qty * price;
+        if (cost <= cash) { cash -= cost; shares += qty; }
+      } else if (snap.action === "sell" && qty > 0) {
+        const sellQty = Math.min(qty, shares);
+        cash += sellQty * price;
+        shares -= sellQty;
+      }
+      const agentValue = cash + shares * price;
+      agentValues.push((agentValue - startCash) / startCash);
+      buyHoldValues.push((price - startPrice) / startPrice);
+      holdCashValues.push(0);
+      shortValues.push((startPrice - price) / startPrice);
+      dates.push(snap.date);
+    }
+
+    return {
+      dates,
+      series: [
+        { key: "agent", label: "Roundtable agents", color: CHART_COLORS.agent, values: agentValues, area: true },
+        { key: "buyhold", label: "Buy and hold", color: CHART_COLORS.buyhold, values: buyHoldValues },
+        { key: "cash", label: "Hold cash", color: CHART_COLORS.cash, values: holdCashValues },
+        { key: "short", label: "Sell short", color: CHART_COLORS.short, values: shortValues },
+      ],
+    };
+  }
+
+  function renderChartLegend(container, series) {
+    container.innerHTML = series.map(s => {
+      const last = s.values[s.values.length - 1];
+      const sign = last > 0 ? "+" : "";
+      return `<div class="legend-item"><span class="legend-swatch line" style="background:${s.color}"></span>${s.label}: ${sign}${(last * 100).toFixed(1)}%</div>`;
+    }).join("");
+  }
+
+  function renderLineChart(container, tooltipEl, dates, series) {
+    const W = 640, H = 220;
+    const pad = { top: 16, right: 16, bottom: 10, left: 46 };
+    const plotW = W - pad.left - pad.right;
+    const plotH = H - pad.top - pad.bottom;
+    const n = dates.length;
+
+    const allValues = series.flatMap(s => s.values);
+    let yMin = Math.min(0, ...allValues), yMax = Math.max(0, ...allValues);
+    const yPad = (yMax - yMin) * 0.15 || 0.05;
+    yMin -= yPad; yMax += yPad;
+
+    const xAt = (i) => pad.left + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+    const yAt = (v) => pad.top + (1 - (v - yMin) / (yMax - yMin)) * plotH;
+
+    let gridSvg = "";
+    const yTicks = 4;
+    for (let t = 0; t <= yTicks; t++) {
+      const v = yMin + (t / yTicks) * (yMax - yMin);
+      const y = yAt(v);
+      gridSvg += `<line x1="${pad.left}" y1="${y}" x2="${W - pad.right}" y2="${y}" stroke="#21252f" stroke-width="1"/>`;
+      gridSvg += `<text x="${pad.left - 8}" y="${y + 3}" text-anchor="end" font-size="9" fill="#5c6474" font-family="monospace">${(v * 100).toFixed(0)}%</text>`;
+    }
+    if (yMin < 0 && yMax > 0) {
+      const y0 = yAt(0);
+      gridSvg += `<line x1="${pad.left}" y1="${y0}" x2="${W - pad.right}" y2="${y0}" stroke="#383835" stroke-width="1"/>`;
+    }
+
+    let seriesSvg = "";
+    series.forEach(s => {
+      const pts = s.values.map((v, i) => `${xAt(i)},${yAt(v)}`).join(" ");
+      if (s.area) {
+        const areaPts = `${xAt(0)},${yAt(0)} ${pts} ${xAt(n - 1)},${yAt(0)}`;
+        seriesSvg += `<polygon points="${areaPts}" fill="${s.color}" opacity="0.1"/>`;
+      }
+      seriesSvg += `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+      const lastX = xAt(n - 1), lastY = yAt(s.values[n - 1]);
+      seriesSvg += `<circle cx="${lastX}" cy="${lastY}" r="6" fill="#12151c"/>`;
+      seriesSvg += `<circle cx="${lastX}" cy="${lastY}" r="4" fill="${s.color}"/>`;
+    });
+
+    const uid = "c" + Math.random().toString(36).slice(2, 8);
+    container.innerHTML = `<svg class="chart-svg" viewBox="0 0 ${W} ${H}">
+      ${gridSvg}
+      ${seriesSvg}
+      <line id="${uid}-crosshair" x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${H - pad.bottom}" stroke="#5c6474" stroke-width="1" opacity="0"/>
+      <rect id="${uid}-hover" x="${pad.left}" y="0" width="${plotW}" height="${H}" fill="transparent" style="cursor:crosshair;"/>
+    </svg>`;
+
+    const svgEl = container.querySelector("svg");
+    const hoverRect = svgEl.querySelector(`#${uid}-hover`);
+    const crosshair = svgEl.querySelector(`#${uid}-crosshair`);
+
+    hoverRect.addEventListener("mousemove", (evt) => {
+      const rect = svgEl.getBoundingClientRect();
+      const scaleX = W / rect.width;
+      const mouseX = (evt.clientX - rect.left) * scaleX;
+      let idx = Math.round(((mouseX - pad.left) / plotW) * (n - 1));
+      idx = Math.max(0, Math.min(n - 1, idx));
+      const x = xAt(idx);
+      crosshair.setAttribute("x1", x);
+      crosshair.setAttribute("x2", x);
+      crosshair.setAttribute("opacity", "1");
+
+      const rows = series.map(s => `<div class="tt-row"><span class="tt-dot" style="background:${s.color}"></span>${s.label}: ${s.values[idx] >= 0 ? "+" : ""}${(s.values[idx] * 100).toFixed(1)}%</div>`).join("");
+      tooltipEl.innerHTML = `<div class="tt-date">${dates[idx]}</div>${rows}`;
+      tooltipEl.classList.add("show");
+
+      const scale = rect.width / W;
+      const left = Math.min(rect.width - 170, Math.max(0, x * scale + 10));
+      tooltipEl.style.left = left + "px";
+      tooltipEl.style.top = "6px";
+    });
+    hoverRect.addEventListener("mouseleave", () => {
+      crosshair.setAttribute("opacity", "0");
+      tooltipEl.classList.remove("show");
+    });
+  }
+
+  let evalPerformanceCache = null;
+
+  async function loadTrackRecord() {
+    let res;
+    try {
+      res = await fetch(`${API_BASE}/eval/performance`);
+    } catch (e) {
+      el("track-record-empty").textContent = "Could not load track record: " + e.message;
+      return;
+    }
+    if (!res.ok) {
+      el("track-record-empty").textContent = res.status === 404
+        ? "Track record isn't live yet. The weekly snapshot job has not recorded any data, or this endpoint is not deployed yet."
+        : `Could not load track record (server returned ${res.status}).`;
+      return;
+    }
+    evalPerformanceCache = await res.json();
+
+    const tickers = Object.keys(evalPerformanceCache);
+    if (tickers.length === 0) {
+      el("track-record-empty").textContent = "No tickers tracked yet.";
+      return;
+    }
+
+    el("ticker-tabs").innerHTML = tickers.map((t, i) =>
+      `<button class="ticker-tab${i === 0 ? " active" : ""}" data-ticker="${t}">${t}</button>`
+    ).join("");
+
+    el("ticker-tabs").querySelectorAll(".ticker-tab").forEach(btn => {
+      btn.addEventListener("click", () => {
+        el("ticker-tabs").querySelectorAll(".ticker-tab").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        renderTrackRecordTicker(btn.dataset.ticker);
+      });
+    });
+
+    renderTrackRecordTicker(tickers[0]);
+  }
+
+  function renderTrackRecordTicker(ticker) {
+    const data = evalPerformanceCache[ticker];
+    const body = el("track-record-body");
+
+    if (!data || !data.snapshots || data.snapshots.length === 0) {
+      body.innerHTML = `<div class="empty-state">No snapshots recorded yet for ${ticker}. This updates weekly as the system tracks its own calls against the market.</div>`;
+      return;
+    }
+
+    const { dates, series } = buildTrackRecordSeries(data.snapshots);
+    body.innerHTML = `
+      <div class="legend-row" id="track-legend"></div>
+      <div class="chart-wrap"><div id="track-chart"></div><div class="chart-tooltip" id="track-tooltip"></div></div>
+    `;
+    renderChartLegend(el("track-legend"), series);
+    renderLineChart(el("track-chart"), el("track-tooltip"), dates, series);
+  }
+
+  function renderBarChart(categories) {
+    const W = 640, H = 170;
+    const pad = { top: 26, right: 16, bottom: 26, left: 16 };
+    const plotW = W - pad.left - pad.right;
+    const plotH = H - pad.top - pad.bottom;
+
+    const values = categories.map(c => c.value);
+    let yMin = Math.min(0, ...values), yMax = Math.max(0, ...values);
+    const yPad = (yMax - yMin) * 0.2 || 0.05;
+    yMin -= yPad; yMax += yPad;
+
+    const yAt = (v) => pad.top + (1 - (v - yMin) / (yMax - yMin)) * plotH;
+    const zeroY = yAt(0);
+    const n = categories.length;
+    const slot = plotW / n;
+    const barW = Math.min(56, slot * 0.5);
+
+    let bars = "";
+    categories.forEach((c, i) => {
+      const cx = pad.left + slot * (i + 0.5);
+      const y = yAt(c.value);
+      const top = Math.min(y, zeroY);
+      const h = Math.max(Math.abs(y - zeroY), 1);
+      const labelY = c.value >= 0 ? y - 8 : y + 14;
+      bars += `<rect x="${cx - barW / 2}" y="${top}" width="${barW}" height="${h}" rx="4" fill="${c.color}"/>`;
+      bars += `<text x="${cx}" y="${labelY}" text-anchor="middle" font-size="10" font-family="monospace" fill="#eceef2">${c.value >= 0 ? "+" : ""}${(c.value * 100).toFixed(1)}%</text>`;
+      bars += `<text x="${cx}" y="${H - 8}" text-anchor="middle" font-size="9" fill="#5c6474">${c.label}</text>`;
+    });
+
+    return `<svg class="chart-svg" viewBox="0 0 ${W} ${H}">
+      <line x1="${pad.left}" y1="${zeroY}" x2="${W - pad.right}" y2="${zeroY}" stroke="#383835" stroke-width="1"/>
+      ${bars}
+    </svg>`;
+  }
+
+  function renderBacktestResult(data) {
+    const categories = [
+      { label: "MA strategy", color: CHART_COLORS.agent, value: data.strategy_return },
+      { label: "Buy and hold", color: CHART_COLORS.buyhold, value: data.baselines.buy_hold },
+      { label: "Hold cash", color: CHART_COLORS.cash, value: data.baselines.hold_cash },
+      { label: "Sell short", color: CHART_COLORS.short, value: data.baselines.sell_short },
+    ];
+
+    el("backtest-body").innerHTML = `
+      <div class="section-sub" style="margin-bottom: 14px;">${data.ticker}, ${data.start_date} to ${data.end_date} (${data.trade_count} trades)</div>
+      ${renderBarChart(categories)}
+    `;
+  }
+
+  async function runBacktest() {
+    const ticker = el("backtest-ticker").value.trim().toUpperCase();
+    if (!ticker) { alert("Enter a ticker."); return; }
+
+    el("backtest-body").innerHTML = "";
+    el("backtest-btn").disabled = true;
+    el("backtest-status").classList.add("active");
+
+    try {
+      const res = await fetch(`${API_BASE}/eval/backtest?ticker=${encodeURIComponent(ticker)}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Server returned ${res.status}`);
+      }
+      renderBacktestResult(await res.json());
+    } catch (e) {
+      el("backtest-body").innerHTML = `<div class="empty-state">Could not run backtest: ${e.message}</div>`;
+    } finally {
+      el("backtest-status").classList.remove("active");
+      el("backtest-btn").disabled = false;
+    }
+  }
+
+  el("backtest-btn").addEventListener("click", runBacktest);
+
+  // ============================================================
+  // Modals -- the welcome modal (reappears on every visit, no dismissal
+  // is remembered) and the architecture modal (opened on demand from the
+  // nav). Both close via their X button, a backdrop click, or Escape.
+  // ============================================================
+  function closeModal(id) {
+    el(id).hidden = true;
+  }
+  function openModal(id) {
+    el(id).hidden = false;
+  }
+  function wireModal(overlayId, closeBtnId) {
+    el(closeBtnId).addEventListener("click", () => closeModal(overlayId));
+    el(overlayId).addEventListener("click", (e) => {
+      if (e.target.id === overlayId) closeModal(overlayId);
+    });
+  }
+  wireModal("welcome-modal", "modal-close-btn");
+  wireModal("architecture-modal", "architecture-close-btn");
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (!el("welcome-modal").hidden) closeModal("welcome-modal");
+    if (!el("architecture-modal").hidden) closeModal("architecture-modal");
+  });
+
+  el("architecture-btn").addEventListener("click", () => openModal("architecture-modal"));
+  el("architecture-img").addEventListener("error", () => {
+    el("architecture-img").style.display = "none";
+    el("architecture-placeholder").style.display = "block";
+  });
+
+  // ============================================================
+  // Init
+  // ============================================================
   refreshRealSection();
+  loadTrackRecord();
 </script>
 </body>
 </html>
