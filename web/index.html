@@ -170,8 +170,6 @@
   .info-icon:hover, .info-icon:focus-visible { color: var(--text); border-color: var(--text-dim); filter: none; outline: none; }
   .info-bubble {
     position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
     top: calc(100% + 8px);
     z-index: 10;
     width: min(280px, 80vw);
@@ -189,7 +187,10 @@
     box-shadow: 0 8px 24px rgba(0,0,0,0.4);
     display: none;
   }
-  .info-icon:hover .info-bubble, .info-icon:focus .info-bubble { display: block; }
+  /* Shown/positioned by JS (see positionInfoBubble below), not :hover --
+     a pure CSS anchor can't account for the icon's actual position
+     against the viewport edge, which is what clipped this earlier. */
+  .info-bubble.show { display: block; }
 
   .card {
     background: var(--panel);
@@ -475,7 +476,7 @@
   <div class="modal-box">
     <button class="modal-close" id="track-record-info-close-btn" aria-label="Close">&times;</button>
     <h1>About the track record</h1>
-    <div class="tagline">The track record below always includes AAPL as a fixed demo example, so there is a running comparison against buy and hold, hold cash, and sell short from day one. Alongside it, whatever is currently in your real Upstox holdings gets tracked too, refreshed weekly -- buy something new and it starts appearing here.</div>
+    <div class="tagline">The track record below follows your real Upstox holdings, refreshed weekly -- nothing to show until you actually hold something, and a new purchase starts appearing here on its own, no dummy example stocks involved.</div>
     <div class="modal-hint">Enter a ticker in the bar above, then run the roundtable to see analyst output here.</div>
   </div>
 </div>
@@ -582,7 +583,7 @@
           <h2>Track record</h2>
           <button type="button" class="info-icon" aria-label="About track record">
             <span class="info-icon-glyph">i</span>
-            <span class="info-bubble">The real four-agent system, run weekly against AAPL (a fixed demo example) plus your current real Upstox holdings, and logged (see the Analyze section above for a live, on-demand run). Compared against three reference strategies: buy and hold, hold cash, and sell short.</span>
+            <span class="info-bubble">The real four-agent system, run weekly against your current real Upstox holdings, and logged (see the Analyze section above for a live, on-demand run). Compared against three reference strategies: buy and hold, hold cash, and sell short.</span>
           </button>
         </div>
       </div>
@@ -1239,6 +1240,39 @@
   el("architecture-img").addEventListener("error", () => {
     el("architecture-img").style.display = "none";
     el("architecture-placeholder").style.display = "block";
+  });
+
+  // ============================================================
+  // Info-icon popovers -- shown/positioned by JS, not pure CSS :hover.
+  // The bubble is measured after showing, then clamped so its left edge
+  // never sits closer than 12px to either side of the viewport -- fixes
+  // real in-browser overflow: an icon positioned near the left edge of
+  // its row (e.g. right after a short "Track record" heading) combined
+  // with a centered CSS anchor pushed the bubble left of the viewport,
+  // where overflow-x:hidden then clipped it and made half the text
+  // unreadable.
+  function positionInfoBubble(icon) {
+    const bubble = icon.querySelector(".info-bubble");
+    if (!bubble) return;
+    bubble.style.left = "0px";
+    bubble.classList.add("show");
+    const iconRect = icon.getBoundingClientRect();
+    const bubbleRect = bubble.getBoundingClientRect();
+    const margin = 12;
+    const iconCenter = iconRect.left + iconRect.width / 2;
+    let desiredLeft = iconCenter - bubbleRect.width / 2;
+    desiredLeft = Math.max(margin, Math.min(desiredLeft, window.innerWidth - bubbleRect.width - margin));
+    bubble.style.left = `${desiredLeft - iconRect.left}px`;
+  }
+  function hideInfoBubble(icon) {
+    const bubble = icon.querySelector(".info-bubble");
+    if (bubble) bubble.classList.remove("show");
+  }
+  document.querySelectorAll(".info-icon").forEach((icon) => {
+    icon.addEventListener("mouseenter", () => positionInfoBubble(icon));
+    icon.addEventListener("mouseleave", () => hideInfoBubble(icon));
+    icon.addEventListener("focus", () => positionInfoBubble(icon));
+    icon.addEventListener("blur", () => hideInfoBubble(icon));
   });
 
   // ============================================================

@@ -611,3 +611,53 @@ halving the odds of overflowing either edge; and added `overflow-x:
 hidden` on `html`/`body` as a hard backstop, so nothing on the page --
 this popover or otherwise -- can ever force the window itself to scroll
 horizontally.
+
+## Follow-up: dropped the AAPL fallback entirely, fixed a real popover-clipping bug (2026-08-31)
+Kept from the entry above for exactly one day: seeing AAPL/MSFT/NVDA
+(the original fixed watchlist, still sitting as one-snapshot rows from
+before the dynamic-watchlist change) next to "Track record" read as
+confusing noise once real portfolio tracking existed -- "why does my
+track record show stocks I don't own." Removed `BASE_WATCHLIST` down to
+an empty list; the watchlist is now 100% the user's real Upstox holdings,
+with no fixed/dummy fallback of any kind. The accepted tradeoff, stated
+plainly rather than papered over: the Upstox token expires daily and the
+snapshot job runs unattended on a schedule, so a week where the token
+isn't fresh at snapshot time now records nothing at all, for any ticker
+-- there is no longer a guaranteed-continuous baseline series. The user
+chose this explicitly, understanding the tradeoff (buying a real holding
+specifically to seed the track record with something trackable).
+
+### Also: the popover-positioning fix from the previous entry was wrong
+Real in-browser testing again (a screenshot, not just a description) 
+showed the info-icon popover getting half-clipped and unreadable -- text
+cut off, left edge flush against the viewport with no margin. Root
+cause: the previous fix centered the bubble under its icon via
+`left: 50%; transform: translateX(-50%)`, but the icon sits near the
+left edge of its row (right after a short heading), so centering pushed
+the bubble's computed left edge into negative viewport coordinates --
+territory that `overflow-x: hidden` on `body` then clipped, hiding
+roughly the left half of the bubble instead of just preventing a
+scrollbar. A pure CSS anchor cannot know where the icon actually sits
+relative to the viewport; there's no CSS-only way to express "keep this
+box's edges at least 12px from either side of the window" when the
+anchor point can be anywhere.
+
+Replaced the CSS `:hover`-driven show/hide with a small amount of JS
+(`positionInfoBubble`/`hideInfoBubble`, wired to mouseenter/mouseleave/
+focus/blur on each `.info-icon`): on show, it measures the icon's and
+bubble's actual bounding rects and sets an explicit `left` (in pixels,
+relative to the icon) clamped so the bubble's edges never come within
+12px of either side of `window.innerWidth`. This is a page with exactly
+two of these popovers, so the added JS is small and low-risk, and it's
+the only correct fix for an anchor whose on-page position isn't fixed.
+`overflow-x: hidden` on `html`/`body` stays in place as a defensive
+backstop for anything else that might overflow, but the popover itself
+no longer depends on it to avoid a scrollbar -- it's now guaranteed to
+fit inside the viewport by construction.
+
+Tests: `tests/test_tracker.py` updated -- `test_record_snapshot_records_
+nothing_when_not_connected` (replaces the old always-includes-AAPL test)
+asserts an empty watchlist run touches the graph zero times and records
+nothing; `test_record_snapshot_records_only_real_holdings_when_connected`
+asserts the recorded set is exactly the real holdings, no fixed entry
+mixed in.

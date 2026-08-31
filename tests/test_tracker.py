@@ -70,7 +70,9 @@ async def _run_record_snapshot():
     return await tracker.record_snapshot()
 
 
-def test_record_snapshot_always_includes_aapl_even_when_not_connected():
+def test_record_snapshot_records_nothing_when_not_connected():
+    # No fixed/dummy ticker anymore -- a week with no fresh Upstox login
+    # records nothing at all, for any ticker. That's deliberate, not a bug.
     mock_graph = MagicMock()
     mock_graph.ainvoke = AsyncMock(return_value={"final_action": "hold", "final_quantity": 0})
     table = _mock_table()
@@ -82,11 +84,11 @@ def test_record_snapshot_always_includes_aapl_even_when_not_connected():
         import asyncio
         recorded = asyncio.run(_run_record_snapshot())
 
-    assert len(recorded) == 1
-    assert recorded[0]["PartitionKey"] == "AAPL"
+    assert recorded == []
+    mock_graph.ainvoke.assert_not_called()
 
 
-def test_record_snapshot_adds_real_holdings_when_connected():
+def test_record_snapshot_records_only_real_holdings_when_connected():
     mock_graph = MagicMock()
     mock_graph.ainvoke = AsyncMock(return_value={"final_action": "hold", "final_quantity": 0})
     table = _mock_table()
@@ -101,7 +103,7 @@ def test_record_snapshot_adds_real_holdings_when_connected():
         recorded = asyncio.run(_run_record_snapshot())
 
     tickers_recorded = {r["PartitionKey"] for r in recorded}
-    assert tickers_recorded == {"AAPL", "PNB.NS"}
+    assert tickers_recorded == {"PNB.NS"}
 
 
 # --- get_all_tracked_tickers ------------------------------------------------

@@ -7,10 +7,10 @@ logs each decision plus the price at that moment to Azure Table Storage,
 and reconstructs a simple simulated equity curve from those decisions for
 comparison against the three naive baselines in eval/baselines.py.
 
-The watchlist itself is AAPL (a fixed dummy entry, always tracked, so the
-track record has continuous history independent of anything account-
-specific) plus whatever is currently in the user's real Upstox long-term
-holdings, refetched fresh on every run -- see _real_holdings_watchlist.
+The watchlist is entirely the user's real Upstox long-term holdings,
+refetched fresh on every run -- see _real_holdings_watchlist. There is no
+fixed/dummy entry: a week where the Upstox token isn't fresh at snapshot
+time (it expires daily) simply records nothing, for any ticker.
 
 This exists instead of a classic historical backtest because the News/
 Sentiment agent's data source (NewsAPI free tier) only covers the last
@@ -34,16 +34,19 @@ load_dotenv()
 
 TABLE_NAME = "EvalSnapshots"
 
-# AAPL is the one fixed, always-on entry -- deliberately a well-known
-# dummy example, not a portfolio holding. It exists so the track record
-# has a continuous history from day one, independent of whether the user
-# is logged into Upstox on any given week (see _real_holdings_watchlist
-# below for why that can't be relied on for every run).
-BASE_WATCHLIST = [
-    ("AAPL", "Apple Inc"),
-]
+# No fixed/dummy entries -- the watchlist is entirely the user's real
+# Upstox holdings, refetched on every run (see _real_holdings_watchlist).
+# An earlier version kept AAPL as a permanent placeholder so the track
+# record had *some* continuous history regardless of login state, but
+# that read as confusing noise once real portfolio tracking existed
+# ("why does my track record show stocks I don't own") -- removed on
+# request. The real tradeoff this accepts: the Upstox token expires daily
+# (see upstox_auth_store.py) and this runs unattended on a schedule, so a
+# week where the token isn't fresh at snapshot time records nothing at
+# all, for any ticker. That's a known, deliberate consequence, not a bug.
+BASE_WATCHLIST: list[tuple[str, str]] = []
 
-# Max additional tickers pulled from real holdings per run. Each one costs
+# Max tickers pulled from real holdings per run. Each one costs
 # one NewsAPI/Marketaux call and one Azure OpenAI round trip per agent, and
 # an unbounded real portfolio could quietly blow through the shared
 # free-tier quota this already runs close to -- see the WATCHLIST history
@@ -67,9 +70,10 @@ def _real_holdings_watchlist() -> list[tuple[str, str]]:
     Returns [] whenever the Upstox token isn't valid at snapshot time. It
     expires daily (see upstox_auth_store.py) and this runs unattended on a
     weekly schedule, so most runs will not land on a day with a fresh
-    login -- that's expected, not an error. AAPL alone keeps the track
-    record continuous on those weeks; holdings pick back up automatically
-    whenever a run does land on a day the token is still valid.
+    login -- that's expected, not an error, and it means a week can record
+    nothing at all (there is no fixed fallback ticker). Holdings pick back
+    up automatically whenever a run does land on a day the token is still
+    valid.
     """
     result = upstox_account.get_real_holdings()
     if not result.get("connected"):
@@ -84,6 +88,7 @@ def _real_holdings_watchlist() -> list[tuple[str, str]]:
         company_name = market_data.resolve_company_name(ticker)
         pairs.append((ticker, company_name))
     return pairs
+
 
 _analysis_graph = None
 
