@@ -746,3 +746,59 @@ step after `git push` -- log into cPanel, Git Version Control, pull the
 latest commit, deploy. `docs/decisions.md`'s deploy notes and any future
 README setup instructions should call this out explicitly so it isn't
 assumed to be automatic just because the Azure side is.
+
+## Bug: bare Indian ticker had no yfinance data, so fundamentals silently failed (2026-08-31)
+Real report: analyzing "SAGILITY" (typed without the exchange suffix)
+came back with the Fundamentals Analyst saying it couldn't retrieve any
+price or fundamental data. Root cause is simple -- yfinance has no ticker
+literally called "SAGILITY"; the real symbol is "SAGILITY.NS". The
+question behind the report ("why can't we get fundamentals, we have the
+Upstox API") is worth answering directly too: Upstox's API gives us the
+user's own account data -- holdings, positions, quantities, funds -- not
+general company fundamentals (P/E, margins, debt, revenue growth, etc.).
+That data comes from a market-data provider regardless of which broker
+holds the account; yfinance is that provider here, and always was.
+
+The frontend's ticker autocomplete already suggests holdings with the
+correct ".NS" suffix, but a `<datalist>` is a suggestion, not an
+enforced choice -- nothing stops free-typing the bare symbol, which is
+exactly what happened. Rather than trying to force the frontend to
+reject unsuffixed input (which would also break for genuinely
+non-Indian tickers), fixed it at the data layer: `market_data.
+_resolve_yf_ticker()` tries the ticker as given first, then retries with
+".NS" and ".BO" before giving up. Wired into `get_price`,
+`get_fundamentals`, `get_price_history`, and `resolve_company_name` --
+every yfinance entry point in the module. An already-suffixed ticker is
+trusted as-is (no wasted attempts); a genuinely invalid symbol still
+fails honestly after all three tries, so this is a fallback for a
+missing suffix, not a guess-anything resolver.
+
+Caught a real bug in the first draft of this fix during its own tests:
+the fallback loop made an extra redundant yfinance call for a bare
+ticker that resolves fine as-is (constructed a Ticker once before the
+loop, then again for the loop's first, identical candidate) -- a mocked
+call-count assertion in `tests/test_market_data.py` caught it before it
+shipped. Fixed by removing the redundant pre-loop construction.
+
+Verified with 8 new tests in `tests/test_market_data.py`: an
+already-suffixed ticker skips fallback entirely; a bare ticker that
+works as-is makes exactly one call; the SAGILITY case specifically
+(bare fails, ".NS" works); a ".BO"-only case; the honest-failure case
+when nothing resolves; and that `get_price`/`get_fundamentals` surface
+the actually-resolved ticker symbol in their output, not the original
+possibly-wrong one.
+
+## Feature: delete stale track-record entries via the API (2026-08-31)
+The dynamic watchlist (see earlier entries today) only ever adds
+tickers on a successful run -- it has no way to prune an old one, so the
+original fixed AAPL/MSFT/NVDA snapshots from before that change kept
+showing up in the track record forever as permanently-flat one-snapshot
+tabs, with no route to remove them short of directly touching Azure
+Table Storage (which neither of this session's two sandboxes has network
+access to). Added `DELETE /eval/snapshots/{ticker}`, secret-protected
+the same way `/eval/record-snapshot` is (this is destructive, so it's
+not on the public read-only surface), backed by a new
+`eval_tracker.delete_snapshots(ticker)` that removes every row for that
+PartitionKey. Lets stale entries be cleared with one `curl` call using
+the `EVAL_TRIGGER_SECRET` already sitting in `.env`, without needing
+`az` CLI or direct Table Storage access from anywhere.

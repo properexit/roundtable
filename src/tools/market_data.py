@@ -9,21 +9,6 @@ from __future__ import annotations
 import yfinance as yf
 
 
-def get_price(ticker: str) -> dict:
-    """Latest price snapshot for a ticker."""
-    t = yf.Ticker(ticker)
-    info = t.fast_info
-    return {
-        "ticker": ticker.upper(),
-        "last_price": round(float(info.last_price), 2),
-        "previous_close": round(float(info.previous_close), 2),
-        "day_high": round(float(info.day_high), 2),
-        "day_low": round(float(info.day_low), 2),
-        "currency": info.currency,
-        "market_cap": info.market_cap,
-    }
-
-
 def is_indian_ticker(ticker: str) -> bool:
     """True for NSE/BSE-listed tickers, per yfinance's exchange-suffix
     convention (e.g. "PNB.NS", "SAGILITY.BO"). Used to route the News &
@@ -32,6 +17,51 @@ def is_indian_ticker(ticker: str) -> bool:
     docs/decisions.md.
     """
     return ticker.strip().upper().endswith((".NS", ".BO"))
+
+
+def _resolve_yf_ticker(ticker: str) -> "yf.Ticker":
+    """
+    Returns a working yfinance Ticker for `ticker`. If the bare symbol
+    doesn't resolve to real price data, retries with the NSE (".NS") then
+    BSE (".BO") suffix before giving up -- covers a real, reported failure:
+    a user typing a plain Indian trading symbol (e.g. "SAGILITY") without
+    the exchange suffix yfinance actually requires. The frontend's ticker
+    autocomplete suggests the suffixed form for real holdings, but nothing
+    stops free-typing the bare one, and that's exactly what broke.
+
+    Only tried for tickers that aren't already suffixed -- an explicit
+    ".NS"/".BO" ticker is trusted as-is, and a genuinely invalid or
+    delisted symbol still fails honestly after all three attempts (this
+    is a fallback for a missing suffix, not a guess-anything resolver).
+    """
+    ticker = ticker.strip().upper()
+    if is_indian_ticker(ticker):
+        return yf.Ticker(ticker)
+
+    last = None
+    for candidate in (ticker, f"{ticker}.NS", f"{ticker}.BO"):
+        last = yf.Ticker(candidate)
+        try:
+            if last.fast_info.last_price:
+                return last
+        except Exception:
+            continue
+    return last
+
+
+def get_price(ticker: str) -> dict:
+    """Latest price snapshot for a ticker."""
+    t = _resolve_yf_ticker(ticker)
+    info = t.fast_info
+    return {
+        "ticker": t.ticker,
+        "last_price": round(float(info.last_price), 2),
+        "previous_close": round(float(info.previous_close), 2),
+        "day_high": round(float(info.day_high), 2),
+        "day_low": round(float(info.day_low), 2),
+        "currency": info.currency,
+        "market_cap": info.market_cap,
+    }
 
 
 def resolve_company_name(ticker: str) -> str:
@@ -46,7 +76,7 @@ def resolve_company_name(ticker: str) -> str:
     less precisely) on the raw symbol.
     """
     try:
-        info = yf.Ticker(ticker).info
+        info = _resolve_yf_ticker(ticker).info
         return info.get("longName") or info.get("shortName") or ticker.upper()
     except Exception:
         return ticker.upper()
@@ -54,10 +84,10 @@ def resolve_company_name(ticker: str) -> str:
 
 def get_fundamentals(ticker: str) -> dict:
     """Core fundamental ratios used by the fundamentals analyst agent."""
-    t = yf.Ticker(ticker)
+    t = _resolve_yf_ticker(ticker)
     info = t.info
     return {
-        "ticker": ticker.upper(),
+        "ticker": t.ticker,
         "name": info.get("longName"),
         "sector": info.get("sector"),
         "pe_ratio": info.get("trailingPE"),
@@ -79,7 +109,7 @@ def get_price_history(ticker: str, period: str = "6mo") -> list[dict]:
     eval/backtest.py to replay historical windows.
     period: any yfinance-valid period, e.g. '1mo', '6mo', '1y', '5y'.
     """
-    t = yf.Ticker(ticker)
+    t = _resolve_yf_ticker(ticker)
     hist = t.history(period=period)
     hist = hist.reset_index()
     return [

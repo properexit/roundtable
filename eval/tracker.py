@@ -155,6 +155,29 @@ def get_snapshots(ticker: str) -> list[dict]:
     return sorted(entities, key=lambda e: e["RowKey"])
 
 
+def delete_snapshots(ticker: str) -> int:
+    """
+    Deletes every recorded snapshot row for `ticker`. Returns how many
+    rows were removed.
+
+    Exists to clear stale watchlist entries that no longer belong -- most
+    concretely, the original fixed AAPL/MSFT/NVDA entries recorded before
+    the watchlist became dynamic/real-holdings-only (see docs/decisions.md).
+    The dynamic-watchlist logic only ever adds tickers on a successful
+    run; it has no way to know an old entry should be pruned, so without
+    this those rows would sit forever as permanently-flat one-snapshot
+    tabs in the track record. Called via the DELETE /eval/snapshots/{ticker}
+    endpoint, secret-protected the same way /eval/record-snapshot is --
+    this is destructive, not the read-only public surface.
+    """
+    table = _table_client()
+    ticker = ticker.strip().upper()
+    entities = list(table.query_entities(f"PartitionKey eq '{ticker}'"))
+    for entity in entities:
+        table.delete_entity(partition_key=entity["PartitionKey"], row_key=entity["RowKey"])
+    return len(entities)
+
+
 def get_all_tracked_tickers() -> list[str]:
     """
     Every ticker that has at least one recorded snapshot, past or present

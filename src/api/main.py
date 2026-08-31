@@ -245,6 +245,21 @@ async def eval_record_snapshot(x_eval_secret: str | None = Header(default=None))
     return {"recorded": recorded}
 
 
+@app.delete("/eval/snapshots/{ticker}")
+async def eval_delete_snapshots(ticker: str, x_eval_secret: str | None = Header(default=None)):
+    """
+    Deletes every recorded snapshot for `ticker`. Secret-protected like
+    /eval/record-snapshot -- destructive, not the public read-only
+    surface. Exists to clear stale watchlist entries that no longer
+    belong (e.g. AAPL/MSFT/NVDA, recorded before the watchlist became
+    dynamic/real-holdings-only) -- the dynamic-watchlist logic only ever
+    adds tickers, it has no way to prune an old one on its own.
+    """
+    _check_eval_secret(x_eval_secret)
+    deleted = eval_tracker.delete_snapshots(ticker)
+    return {"ticker": ticker.upper(), "deleted": deleted}
+
+
 @app.get("/eval/performance")
 async def eval_performance():
     """

@@ -120,3 +120,30 @@ def test_get_all_tracked_tickers_returns_distinct_sorted():
         result = tracker.get_all_tracked_tickers()
 
     assert result == ["AAPL", "PNB.NS", "SAGILITY.NS"]
+
+
+# --- delete_snapshots --------------------------------------------------
+
+def test_delete_snapshots_removes_every_row_for_ticker():
+    table = MagicMock()
+    table.query_entities.return_value = [
+        {"PartitionKey": "AAPL", "RowKey": "2026-08-24T00:00:00"},
+        {"PartitionKey": "AAPL", "RowKey": "2026-08-17T00:00:00"},
+    ]
+    with patch.object(tracker, "_table_client", return_value=table):
+        deleted_count = tracker.delete_snapshots("aapl")
+
+    assert deleted_count == 2
+    assert table.delete_entity.call_count == 2
+    table.delete_entity.assert_any_call(partition_key="AAPL", row_key="2026-08-24T00:00:00")
+    table.delete_entity.assert_any_call(partition_key="AAPL", row_key="2026-08-17T00:00:00")
+
+
+def test_delete_snapshots_returns_zero_for_untracked_ticker():
+    table = MagicMock()
+    table.query_entities.return_value = []
+    with patch.object(tracker, "_table_client", return_value=table):
+        deleted_count = tracker.delete_snapshots("NOTHING")
+
+    assert deleted_count == 0
+    table.delete_entity.assert_not_called()
