@@ -720,3 +720,29 @@ above..." usage hint -- moved back into the welcome modal, where it
 originally lived before this detour. `wireModal` also dropped the
 optional onClose-chaining parameter it grew to support this modal chain,
 since nothing calls it with a third argument anymore.
+
+## Deploy process note: cPanel's frontend deploy is not automatic on git push (2026-08-31)
+Worth writing down since it caused real confusion this session: pushing
+to `origin main` on GitHub only auto-deploys the Azure backend, via the
+GitHub Actions workflow that's actually subscribed to that push event
+(`.github/workflows/roundtable-api-AutoDeployTrigger-*.yml`). It does
+NOT touch daycandle.org. The frontend deploy goes through a completely
+separate mechanism -- cPanel's own Git Version Control feature, which
+pulls from GitHub as a remote and runs `.cpanel.yml`'s tasks (copying
+`web/index.html` into the live `public_html`) -- and that pull has to be
+triggered manually in the cPanel UI ("Update from Remote", then deploy)
+every time. There's no webhook wiring GitHub pushes to cPanel here.
+
+Confirmed by direct evidence: after a push that included several web/
+commits, the live site still served pre-push content (checked via
+WebFetch against daycandle.org -- string search for the newly-added
+`track-record-help-btn` element id came back absent, the newly-removed
+`info-bubble` class came back present). The backend's own GitHub Actions
+deploy, by contrast, verified successfully every time this session,
+because it's actually wired to the push event.
+
+Practical implication: any `web/index.html` change needs an extra manual
+step after `git push` -- log into cPanel, Git Version Control, pull the
+latest commit, deploy. `docs/decisions.md`'s deploy notes and any future
+README setup instructions should call this out explicitly so it isn't
+assumed to be automatic just because the Azure side is.
