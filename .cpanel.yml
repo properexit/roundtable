@@ -3,3 +3,4 @@ deployment:
   tasks:
     - export DEPLOYPATH=/home/daycandl/public_html/
     - /bin/cp -f web/index.html $DEPLOYPATH/index.html
+    - /bin/cp -f web/architecture.png $DEPLOYPATH/architecture.png

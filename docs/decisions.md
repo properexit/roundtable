@@ -802,3 +802,55 @@ not on the public read-only surface), backed by a new
 PartitionKey. Lets stale entries be cleared with one `curl` call using
 the `EVAL_TRIGGER_SECRET` already sitting in `.env`, without needing
 `az` CLI or direct Table Storage access from anywhere.
+
+## Feature: real architecture diagram for the Architecture modal (2026-08-31)
+`web/index.html` has had an `#architecture-modal` with an `<img
+id="architecture-img" src="architecture.png">` since earlier in the
+project, showing a graceful "Architecture diagram coming soon." fallback
+(an `error` listener on the img) because the file never existed. Built a
+real one: a hand-authored inline-SVG diagram (generator script, not a
+drawing tool, so it's precisely grid-aligned and iterable), rendered to
+PNG via Playwright, styled with the site's actual dark-theme CSS custom
+properties so it looks native inside the modal rather than like a
+generic stock image.
+
+Drawn directly from the real code, not a paraphrase of it -- confirmed
+by reading `graph.py`, `mcp_server/server.py`, and the four agent files
+before laying anything out:
+- The two graph variants and where they diverge: the live `/analyze`
+  path runs the full graph through `interrupt()`-gated human approval
+  and simulated execution; the daily eval job (`eval/tracker.py`) uses
+  `build_analysis_graph()`, which stops right after the final decision
+  -- no propose/approve/execute. The diagram only draws the full path,
+  since that's the one a viewer actually asks "wait, does this thing
+  trade on its own?" about; the human-approval gate is pulled out as the
+  one visually distinct box in the whole diagram for that reason.
+- MCP tools run as a stdio subprocess in the same container, not a
+  network service -- drawn as a box inside the backend boundary, not as
+  an external system.
+- Three of the four agents are `create_react_agent(... tools=[...])`
+  ReAct loops scoped to specific tools; the Portfolio Manager (called
+  twice) has no tools at all, just `with_structured_output` over the
+  other agents' text. The diagram reflects this directly in each box's
+  copy rather than drawing all four agents identically.
+- Upstox integration bypasses MCP entirely -- `src/api/main.py` calls
+  `upstox_account` directly before the graph runs -- so it's drawn as
+  its own box feeding into the graph, not as one of the seven MCP tool
+  chips.
+- Azure AI Language only scores sentiment on whatever the news tool
+  already fetched; it isn't a second data source, so it's drawn
+  downstream of the news boxes, not parallel to them.
+
+Also fixed two real layout bugs caught during self-QA before ever
+showing this to a human: one connector's x-coordinate was computed with
+an out-of-bounds multiplier and rendered mostly off-canvas, and another
+long diagonal connector cut straight through two unrelated boxes' body
+text. Both were rerouted as elbowed paths through the actual gaps
+between boxes rather than as straight lines, which is the fix any of
+these long same-page connectors should use going forward if more are
+added later.
+
+`.cpanel.yml` only copied `web/index.html` to the deploy path -- added a
+second `cp` line for `web/architecture.png`, otherwise the live site
+would keep showing the placeholder even after a correct cPanel deploy,
+since the `<img>`'s `error` listener would keep firing on a 404.
