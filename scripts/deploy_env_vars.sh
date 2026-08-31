@@ -11,37 +11,58 @@ RESOURCE_GROUP="rg-roundtable"
 
 source .env
 
-az containerapp secret set --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" --secrets \
-  azure-openai-endpoint="$AZURE_OPENAI_ENDPOINT" \
-  azure-openai-api-key="$AZURE_OPENAI_API_KEY" \
-  azure-openai-deployment="$AZURE_OPENAI_DEPLOYMENT" \
-  azure-language-endpoint="$AZURE_LANGUAGE_ENDPOINT" \
-  azure-language-key="$AZURE_LANGUAGE_KEY" \
-  news-api-key="$NEWS_API_KEY" \
-  azure-storage-connection-string="$AZURE_STORAGE_CONNECTION_STRING" \
-  site-login-password="$SITE_LOGIN_PASSWORD" \
-  site-session-secret="$SITE_SESSION_SECRET" \
-  upstox-client-id="$UPSTOX_CLIENT_ID" \
-  upstox-client-secret="$UPSTOX_CLIENT_SECRET" \
-  upstox-redirect-uri="$UPSTOX_REDIRECT_URI" \
+# MARKETAUX_API_KEY is optional (src/tools/news.py falls back to a free
+# RSS feed when it's unset) -- an empty secret value trips
+# ContainerAppSecretInvalid the same way an unfilled AZURE_STORAGE_
+# CONNECTION_STRING did before, so only set/wire it up when it's actually
+# present in .env. ${VAR:-} avoids an unbound-variable error under `set -u`
+# for anyone running this against an older .env that predates this key.
+MARKETAUX_API_KEY="${MARKETAUX_API_KEY:-}"
+
+secrets=(
+  azure-openai-endpoint="$AZURE_OPENAI_ENDPOINT"
+  azure-openai-api-key="$AZURE_OPENAI_API_KEY"
+  azure-openai-deployment="$AZURE_OPENAI_DEPLOYMENT"
+  azure-language-endpoint="$AZURE_LANGUAGE_ENDPOINT"
+  azure-language-key="$AZURE_LANGUAGE_KEY"
+  news-api-key="$NEWS_API_KEY"
+  azure-storage-connection-string="$AZURE_STORAGE_CONNECTION_STRING"
+  site-login-password="$SITE_LOGIN_PASSWORD"
+  site-session-secret="$SITE_SESSION_SECRET"
+  upstox-client-id="$UPSTOX_CLIENT_ID"
+  upstox-client-secret="$UPSTOX_CLIENT_SECRET"
+  upstox-redirect-uri="$UPSTOX_REDIRECT_URI"
   eval-trigger-secret="$EVAL_TRIGGER_SECRET"
+)
+env_vars=(
+  AZURE_OPENAI_ENDPOINT=secretref:azure-openai-endpoint
+  AZURE_OPENAI_API_KEY=secretref:azure-openai-api-key
+  AZURE_OPENAI_DEPLOYMENT=secretref:azure-openai-deployment
+  AZURE_LANGUAGE_ENDPOINT=secretref:azure-language-endpoint
+  AZURE_LANGUAGE_KEY=secretref:azure-language-key
+  NEWS_API_KEY=secretref:news-api-key
+  AZURE_STORAGE_CONNECTION_STRING=secretref:azure-storage-connection-string
+  SITE_LOGIN_PASSWORD=secretref:site-login-password
+  SITE_SESSION_SECRET=secretref:site-session-secret
+  UPSTOX_CLIENT_ID=secretref:upstox-client-id
+  UPSTOX_CLIENT_SECRET=secretref:upstox-client-secret
+  UPSTOX_REDIRECT_URI=secretref:upstox-redirect-uri
+  EVAL_TRIGGER_SECRET=secretref:eval-trigger-secret
+)
+
+if [ -n "$MARKETAUX_API_KEY" ]; then
+  secrets+=(marketaux-api-key="$MARKETAUX_API_KEY")
+  env_vars+=(MARKETAUX_API_KEY=secretref:marketaux-api-key)
+  echo "MARKETAUX_API_KEY found in .env -- deploying it."
+else
+  echo "MARKETAUX_API_KEY not set in .env -- skipping it (Indian-stock news will use the free RSS fallback only)."
+fi
+
+az containerapp secret set --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" --secrets "${secrets[@]}"
 
 # --set-env-vars forces a new revision, which also gives Azure a fresh
 # chance to schedule with the (already-correct) ingress port config instead
 # of being stuck on revision 0000001's stale ActivationFailed status.
-az containerapp update --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" --set-env-vars \
-  AZURE_OPENAI_ENDPOINT=secretref:azure-openai-endpoint \
-  AZURE_OPENAI_API_KEY=secretref:azure-openai-api-key \
-  AZURE_OPENAI_DEPLOYMENT=secretref:azure-openai-deployment \
-  AZURE_LANGUAGE_ENDPOINT=secretref:azure-language-endpoint \
-  AZURE_LANGUAGE_KEY=secretref:azure-language-key \
-  NEWS_API_KEY=secretref:news-api-key \
-  AZURE_STORAGE_CONNECTION_STRING=secretref:azure-storage-connection-string \
-  SITE_LOGIN_PASSWORD=secretref:site-login-password \
-  SITE_SESSION_SECRET=secretref:site-session-secret \
-  UPSTOX_CLIENT_ID=secretref:upstox-client-id \
-  UPSTOX_CLIENT_SECRET=secretref:upstox-client-secret \
-  UPSTOX_REDIRECT_URI=secretref:upstox-redirect-uri \
-  EVAL_TRIGGER_SECRET=secretref:eval-trigger-secret
+az containerapp update --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" --set-env-vars "${env_vars[@]}"
 
 echo "Done. Give it ~30-60s, then check: az containerapp revision list --name $APP_NAME --resource-group $RESOURCE_GROUP -o table"

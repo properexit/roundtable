@@ -326,3 +326,219 @@ checked directly). The three new `/eval/*` routes verified with FastAPI's
 TestClient: the trigger secret gates record-snapshot correctly (missing,
 wrong, and correct cases), and both GET routes degrade cleanly (empty
 history, insufficient backtest data) rather than 500ing.
+
+## Bug: eval harness 404'd in production -- Dockerfile never shipped eval/ (2026-08-31)
+After pushing the eval harness commit, GitHub Actions' auto-deploy reported
+success and built a new image, but `/eval/performance` and `/eval/backtest`
+both 404'd on the live API. `az containerapp revision list` showed the new
+revision as Unhealthy with 0 replicas while an older revision kept serving
+traffic -- so the build succeeded but the container crash-looped on start.
+
+Root cause: `Dockerfile` only had `COPY src/ ./src/`. The `eval/` package
+(tracker.py, backtest.py, baselines.py) lives at the repo root as a sibling
+of `src/`, not inside it, so it was never copied into the image.
+`src/api/main.py` imports it as `from eval import tracker as eval_tracker`
+at module load time, so the missing package raised `ModuleNotFoundError`
+on every startup attempt, before the app could ever pass its readiness
+probe. The container app's ingress falling back to the last healthy
+revision (pre-eval-harness code) is what made the symptom look like a
+routing problem rather than a crash -- `/openapi.json` on the live URL kept
+showing the old route list, which pointed straight at "the new code isn't
+actually running" once compared against what GitHub Actions said it built.
+Fixed with one line: `COPY eval/ ./eval/`, matching how `src/` is already
+copied and how `eval/tracker.py` itself imports back into `src.*` (both
+packages need to be siblings importable from `/app`, which uvicorn's
+default working-directory-on-sys.path behavior makes possible).
+
+Diagnostic path worth keeping: `az containerapp revision list -o table`
+found the unhealthy revision; the GitHub Actions run's `conclusion` (via
+the GitHub API, since `gh`/browser weren't in hand yet) confirmed the build
+itself didn't fail, narrowing it to "runtime crash in a build Actions
+thinks succeeded" rather than "deploy never ran" -- which is what pointed
+at the Dockerfile's COPY list instead of, say, a missing secret.
+
+### Frontend hardening from the same bug
+`loadTrackRecord()` in the frontend was parsing `/eval/performance`'s
+response body as ticker data without checking `res.ok` first. Against a
+404 body of `{"detail": "Not Found"}`, `Object.keys(...)` on that returned
+`["detail"]`, which the UI then rendered as if "detail" were a ticker
+symbol -- a confusing phantom tab that obscured the real backend problem.
+Fixed to check `res.ok` and show an honest status message instead, so a
+future backend regression fails visibly rather than silently as fake data.
+
+## Feature: drop the company-name field, resolve it server-side (2026-08-31)
+UI feedback: typing both a ticker and its company name on every run was
+redundant and made the nav-bar search bar cramped. Dropped `company_name`
+from the frontend entirely -- the analyze bar is ticker-only now.
+
+Not just a UI simplification, though: `company_name` is load-bearing, not
+decorative -- `src/agents/news_analyst.py` forwards it verbatim into
+`get_news_sentiment`, which becomes NewsAPI's `q` search parameter
+(`src/tools/news.py`). A bare ticker like "AAPL" is a poor NewsAPI query
+(noisy/irrelevant matches), so simply stopping sending it would have
+quietly degraded the News & Sentiment analyst.
+
+Fix: `AnalyzeRequest.company_name` is now `str | None = None`
+(`src/api/main.py`), and when omitted the `/analyze` handler resolves it
+server-side via a new `market_data.resolve_company_name(ticker)` (falls
+back through yfinance's `longName` -> `shortName` -> the ticker itself,
+and never raises -- a bad symbol just degrades to a ticker-based search
+rather than a 500). Added as its own small function rather than reusing
+`get_fundamentals` (which already reads the same `longName` field) because
+`get_fundamentals` runs concurrently inside the fundamentals node -- the
+news node can't read its result mid-graph, and resolving once in the
+endpoint, before `_graph.ainvoke(...)`, keeps the parallel fan-out
+structure untouched. `company_name` stays accepted (optional) for
+backwards compatibility with `scripts/run_roundtable.py` and
+`eval/tracker.py`'s fixed watchlist, which both still pass it explicitly.
+
+Verified with a mocked yfinance client (present/missing `longName`,
+missing everything, and a raised exception all resolve to a sane string)
+and FastAPI's TestClient with the graph itself mocked out (ticker-only
+request resolves and forwards the mocked name into graph state; a request
+that explicitly supplies `company_name` skips the resolver entirely and
+uses the caller's value unchanged).
+
+### Ticker suggestions
+The nav's ticker input also gained a native `<datalist>` (`#ticker-suggestions`),
+populated from the user's own real Upstox holdings + positions once they're
+logged in and connected (`populateTickerSuggestions()` in web/index_new.html,
+called after `loadRealData()` succeeds). Kept to a plain `<datalist>` rather
+than a hand-rolled dropdown -- free browser-native autocomplete, no extra
+JS/CSS for something this small, and it degrades to nothing (no
+suggestions, no error) for a logged-out or not-yet-connected visitor.
+
+## Feature: Indian-stock news routing -- Marketaux + Economic Times RSS fallback (2026-08-31)
+Prompted by a direct question: why does Track Record show AAPL/MSFT/NVDA
+instead of the user's real (Indian, NSE-listed) holdings? Answer at the
+time was that NewsAPI's free tier has thin, unconfirmed coverage of Indian
+financial press, so evaluating the agents against Indian tickers would be
+noisier and less trustworthy than the fixed US-large-cap watchlist. That's
+a real constraint, not just an assumption -- confirmed by research before
+building anything: NewsAPI.org's docs don't name a single Indian outlet as
+an indexed source, and its free "Developer" tier is explicitly documented
+as not for production use (24h-delayed articles, localhost-only CORS).
+
+Rather than accept that ceiling, added a second, ticker-routed news path
+so Indian stocks get real coverage too, without touching NewsAPI's
+existing (working) path for everything else:
+
+- **Detection**: `market_data.is_indian_ticker(ticker)` -- true for a
+  ".NS"/".BO" suffix, yfinance's own NSE/BSE exchange-suffix convention.
+  Chosen over "is it in the user's real Upstox holdings" so it also works
+  for any Indian ticker someone types in, not just their current positions.
+- **Primary source**: Marketaux (`src/tools/news.py::_get_marketaux_news`).
+  Researched and confirmed (via its own docs and sample data) to carry
+  real Indian-publisher coverage -- Economic Times, Business Standard,
+  Times of India, LiveMint, Hindu BusinessLine all present, 12,584 Indian
+  financial entities mapped. Free tier: 100 requests/day, workable for a
+  personal-scale watchlist. Query params: `search` (company name),
+  `countries=in`, `published_after` (Y-m-d), `api_token`.
+- **Fallback**: Economic Times' free Markets RSS feed
+  (`_get_et_rss_news`), no API key, always available. Not company-filtered
+  by the publisher (it's a general Markets feed), so filtered client-side
+  by a case-insensitive substring match against the company name in each
+  entry's title/summary -- an unmatched company returns `[]`, not the
+  unfiltered feed, because substituting unrelated market news would
+  corrupt the sentiment signal rather than honestly report thin coverage
+  (same principle as the "explicit no-position line" decision earlier in
+  this doc).
+- **Never raises**: a missing `MARKETAUX_API_KEY`, a Marketaux error, or
+  an RSS parse failure all just fall through to the next source or an
+  empty list -- one flaky data source degrades the News Analyst's
+  confidence, it doesn't 500 the whole `/analyze` call.
+- Considered and rejected for now: the unofficial NSE India API (real
+  corporate announcements, but no official ToS, requires session-cookie
+  handling NSE actively tries to block, and is a different kind of signal
+  -- disclosures, not news coverage). Revisit only if the agent specifically
+  needs authoritative filings a news search can't provide.
+
+Threaded `ticker` through the previously company-name-only news path:
+`get_news_sentiment` (MCP tool, `src/mcp_server/server.py`) gained an
+optional `ticker` param; `news_analyst.analyze()` now takes `ticker` too
+and includes it in the prompt so the tool-calling LLM actually passes it;
+`graph.py`'s `_news_node` forwards `state.get("ticker")` -- the same
+`ticker` already in `RoundtableState` for the fundamentals node, just not
+previously read by the news branch.
+
+### Frontend: suggestions get a correct suffix, not just a symbol
+`web/index_new.html`'s ticker `<datalist>` (populated from the user's real
+Upstox holdings) now suffixes holdings with ".NS" before suggesting them
+-- Upstox's `trading_symbol` field is a bare NSE/BSE symbol ("PNB", not
+"PNB.NS"), and without the suffix yfinance would silently resolve to the
+wrong ticker (or nothing) for both fundamentals/price *and* this news
+routing. Positions are suggested unsuffixed on purpose: unlike holdings,
+a position can be a derivatives contract (e.g. "NIFTY24AUGFUT") and there's
+no reliable field here to tell an equity intraday position from an F&O one,
+so guessing a suffix that might be wrong was judged worse than leaving it
+alone.
+
+### Verification
+`is_indian_ticker` (suffix match, case-insensitivity, non-Indian and
+derivatives-symbol negatives); `get_news`'s routing (Indian ticker ->
+`get_indian_news`, everything else -> the original NewsAPI path, unchanged
+behavior when no ticker is passed at all); the full Marketaux ->
+RSS-fallback chain (success skips RSS, empty result falls through, a
+raised exception falls through, both failing returns `[]` without raising);
+`_get_marketaux_news`'s exact request params and response shaping with a
+mocked `requests.get`; `_get_et_rss_news`'s company-name filtering against
+a mocked feed (matches by title *or* summary, a company with zero matches
+returns `[]` rather than the unfiltered feed); and `_news_node` forwarding
+`state["ticker"]` into `news_analyst.analyze()` (including the
+no-ticker-in-state case, so this doesn't KeyError on older call sites).
+
+### Follow-up: Marketaux's own relevance ranking wasn't enough (2026-08-31)
+The routing above shipped, but real validation against a live Marketaux key
+(not mocks) showed the "Indian, routed" results for "Punjab National Bank"
+included articles that were not actually about PNB -- a bank-holiday
+notice, an unrelated Reliance Communications legal story, a generic
+home-loan-rates roundup. Two fixes, both driven by real returned data
+rather than guessing at the API's behavior:
+
+**1. Quote the `search` param for exact-phrase matching.** Marketaux
+appears to OR-match an unquoted multi-word query word by word, so
+`search=Punjab National Bank` matched any article containing the very
+common word "bank". Wrapping the query in quotes (`search='"Punjab
+National Bank"'`, per Marketaux's documented `""` operator) noticeably
+improved results but didn't fully fix it.
+
+**2. Filter by entity match_score, not API result order.** A diagnostic
+script (`_debug_marketaux.py`, scratch, not committed) dumped the raw
+`entities` array Marketaux returns per article. The evidence was
+unambiguous: the one genuinely on-topic article had only 2 entities, with
+PNB clearly highest (match_score 38.14 vs. 18.07). The two noisy hits that
+survived the quoted search were both broad multi-stock roundups (20+
+entities each) where PNB was present but not the top-scored company --
+a "home loan rates" article scored PNB at 36.0 against Karur Vysya Bank's
+47.98, and a 25-company margin bulletin scored PNB at 43.4 against
+Crompton Greaves' 103.78. Marketaux's own relevance/result ordering did
+not reflect this -- both noisy articles were returned as if relevant.
+
+Added `_is_primary_entity(article, ticker)`: an article is kept only if
+the target ticker is its single highest-match_score entity. Since this
+filter runs client-side after the API call, `_get_marketaux_news` now
+requests a larger raw pool (`min(page_size * 3, 25)`) before filtering
+down to `page_size`, so the filter doesn't starve legitimate results down
+to fewer than requested. `ticker` became a required parameter on
+`_get_marketaux_news` and `get_indian_news` (previously `get_indian_news`
+didn't take a ticker at all) -- `get_news`'s call site was updated to
+forward it, which was also where a real bug was caught and fixed: the
+first version of this signature change didn't actually pass `ticker`
+through from `get_news`, which would have raised `TypeError` on every
+Indian-routed call.
+
+Verified with mocked unit tests in `tests/test_news.py`, using the real
+match_score numbers above as fixtures (not synthetic ones) so the test
+actually exercises the boundary the live data revealed: `_is_primary_entity`
+true/false cases for all three real articles plus edge cases (no entities,
+target absent); `_get_marketaux_news`'s quoted search param and raw-limit
+sizing against a mocked response; the full Marketaux -> RSS fallback chain
+with the new required `ticker` param; and `get_news`'s routing correctly
+forwarding `ticker` into `get_indian_news` (the exact call that was
+silently broken before this pass).
+
+Re-validated live against the real Marketaux key after the fix: the same
+"Punjab National Bank" query that previously returned 3 articles (1
+relevant, 2 noisy) now returns exactly 1 -- a CBI court case tied to the
+PNB scam, genuinely about the company, no roundup articles slipping
+through.

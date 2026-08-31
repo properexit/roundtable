@@ -24,6 +24,34 @@ def get_price(ticker: str) -> dict:
     }
 
 
+def is_indian_ticker(ticker: str) -> bool:
+    """True for NSE/BSE-listed tickers, per yfinance's exchange-suffix
+    convention (e.g. "PNB.NS", "SAGILITY.BO"). Used to route the News &
+    Sentiment analyst to a source with real Indian financial-press coverage
+    instead of NewsAPI, whose free tier's Indian coverage is thin -- see
+    docs/decisions.md.
+    """
+    return ticker.strip().upper().endswith((".NS", ".BO"))
+
+
+def resolve_company_name(ticker: str) -> str:
+    """Best-effort company display name for a ticker, via yfinance.
+
+    Used to auto-fill the News & Sentiment analyst's search query from just
+    a ticker -- yfinance's ``longName`` is the same field ``get_fundamentals``
+    already reads, pulled out here as its own lightweight lookup so callers
+    that only need a name (not the full fundamentals payload) aren't paying
+    for one. Never raises: a bad/delisted ticker or a yfinance hiccup just
+    falls back to the ticker itself, since the news search still works (if
+    less precisely) on the raw symbol.
+    """
+    try:
+        info = yf.Ticker(ticker).info
+        return info.get("longName") or info.get("shortName") or ticker.upper()
+    except Exception:
+        return ticker.upper()
+
+
 def get_fundamentals(ticker: str) -> dict:
     """Core fundamental ratios used by the fundamentals analyst agent."""
     t = yf.Ticker(ticker)

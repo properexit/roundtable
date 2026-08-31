@@ -71,7 +71,7 @@ async def _fundamentals_node(state: RoundtableState) -> dict:
 
 
 async def _news_node(state: RoundtableState) -> dict:
-    return {"news": await news_analyst.analyze(state["company_name"])}
+    return {"news": await news_analyst.analyze(state["company_name"], state.get("ticker"))}
 
 
 async def _draft_node(state: RoundtableState) -> dict:

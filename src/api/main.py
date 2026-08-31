@@ -32,7 +32,7 @@ from pydantic import BaseModel
 
 from src.agents.graph import build_graph
 from src.api import auth
-from src.tools import portfolio, upstox_account, upstox_auth_store
+from src.tools import market_data, portfolio, upstox_account, upstox_auth_store
 from eval import tracker as eval_tracker
 from eval.backtest import sma_crossover_backtest
 from eval.baselines import all_baselines
@@ -55,7 +55,13 @@ FRONTEND_URL = "https://daycandle.org"
 
 class AnalyzeRequest(BaseModel):
     ticker: str
-    company_name: str
+    # Optional: the frontend only sends a ticker now. When omitted, the
+    # News & Sentiment analyst's search query is auto-resolved server-side
+    # via yfinance (src/tools/market_data.resolve_company_name) rather than
+    # relying on the user to type an exact company name. Still accepted
+    # explicitly for backwards compatibility (scripts/run_roundtable.py,
+    # eval/tracker.py's fixed watchlist both pass it directly).
+    company_name: str | None = None
 
 
 class ApproveRequest(BaseModel):
@@ -93,13 +99,15 @@ async def analyze(req: AnalyzeRequest, authorization: str | None = Header(defaul
         if auth.verify_session_token(token):
             real_position_context = upstox_account.real_position_context_line(req.ticker.upper())
 
+    company_name = req.company_name or market_data.resolve_company_name(req.ticker)
+
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
 
     result = await _graph.ainvoke(
         {
             "ticker": req.ticker.upper(),
-            "company_name": req.company_name,
+            "company_name": company_name,
             "real_position_context": real_position_context,
         },
         config=config,

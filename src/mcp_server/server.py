@@ -44,14 +44,19 @@ def get_price_history(ticker: str, period: str = "6mo") -> list[dict]:
 
 
 @mcp.tool()
-def get_news_sentiment(company_name: str, days: int = 7) -> dict:
+def get_news_sentiment(company_name: str, ticker: str | None = None, days: int = 7) -> dict:
     """
     Recent news sentiment for a company (use the company name, e.g. 'Apple',
-    not the ticker). Returns an aggregate positive/neutral/negative signal
-    plus the article count it was computed over -- this is what the
-    News/Sentiment Analyst agent should call, not get_news + Azure directly.
+    not the ticker, for the search itself). Also pass `ticker` (e.g.
+    'AAPL', 'PNB.NS') when you have it -- an NSE/BSE-listed ticker (a
+    ".NS"/".BO" suffix) routes this to a news source with real Indian
+    financial-press coverage instead of the default one, which has thin
+    coverage of Indian markets. Returns an aggregate positive/neutral/
+    negative signal plus the article count it was computed over -- this is
+    what the News/Sentiment Analyst agent should call, not get_news +
+    Azure directly.
     """
-    articles = news.get_news(company_name, days=days)
+    articles = news.get_news(company_name, ticker=ticker, days=days)
     result = sentiment.analyze_news_sentiment(articles)
     result["headlines"] = [a["title"] for a in articles[:5]]
     return result

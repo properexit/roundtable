@@ -11,6 +11,7 @@ langchain-mcp-adapters>=0.1.0
 # Data sources
 yfinance>=0.2.40
 requests>=2.32.0
+feedparser>=6.0.0  # Economic Times Markets RSS fallback for Indian-stock news (src/tools/news.py)
 
 # Azure
 azure-ai-textanalytics>=5.3.0
