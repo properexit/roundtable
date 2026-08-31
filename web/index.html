@@ -40,8 +40,9 @@
     --radius-sm: 7px;
   }
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
+  html { scroll-behavior: smooth; overflow-x: hidden; }
   body {
+    overflow-x: hidden;
     margin: 0;
     background: var(--bg);
     color: var(--text);
@@ -169,10 +170,11 @@
   .info-icon:hover, .info-icon:focus-visible { color: var(--text); border-color: var(--text-dim); filter: none; outline: none; }
   .info-bubble {
     position: absolute;
-    left: 0;
+    left: 50%;
+    transform: translateX(-50%);
     top: calc(100% + 8px);
     z-index: 10;
-    width: min(300px, 80vw);
+    width: min(280px, 80vw);
     max-width: calc(100vw - 40px);
     background: var(--bg-raised);
     border: 1px solid var(--panel-border);
@@ -473,7 +475,7 @@
   <div class="modal-box">
     <button class="modal-close" id="track-record-info-close-btn" aria-label="Close">&times;</button>
     <h1>About the track record</h1>
-    <div class="tagline">The track record below follows a fixed demo watchlist (AAPL, MSFT, NVDA), not your live portfolio -- that gives it a running comparison against buy and hold, hold cash, and sell short from day one, instead of starting from zero the moment your account connects.</div>
+    <div class="tagline">The track record below always includes AAPL as a fixed demo example, so there is a running comparison against buy and hold, hold cash, and sell short from day one. Alongside it, whatever is currently in your real Upstox holdings gets tracked too, refreshed weekly -- buy something new and it starts appearing here.</div>
     <div class="modal-hint">Enter a ticker in the bar above, then run the roundtable to see analyst output here.</div>
   </div>
 </div>
@@ -580,7 +582,7 @@
           <h2>Track record</h2>
           <button type="button" class="info-icon" aria-label="About track record">
             <span class="info-icon-glyph">i</span>
-            <span class="info-bubble">The real four-agent system, run weekly against a fixed watchlist and logged (see the Analyze section above for a live, on-demand run). Compared against three reference strategies: buy and hold, hold cash, and sell short.</span>
+            <span class="info-bubble">The real four-agent system, run weekly against AAPL (a fixed demo example) plus your current real Upstox holdings, and logged (see the Analyze section above for a live, on-demand run). Compared against three reference strategies: buy and hold, hold cash, and sell short.</span>
           </button>
         </div>
       </div>

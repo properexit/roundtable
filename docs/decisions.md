@@ -542,3 +542,72 @@ Re-validated live against the real Marketaux key after the fix: the same
 relevant, 2 noisy) now returns exactly 1 -- a CBI court case tied to the
 PNB scam, genuinely about the company, no roundup articles slipping
 through.
+
+## Feature: track record watchlist is now dynamic, not hardcoded (2026-08-31)
+The original WATCHLIST (AAPL, MSFT, NVDA) was a fixed constant chosen
+before real-portfolio integration existed. Once the user could actually
+see their own Upstox holdings elsewhere in the app, a hardcoded watchlist
+unrelated to those holdings stopped making sense -- the ask was
+specifically "populate track record with our portfolio stocks, dont
+hardcode it, if i buy something then we should see that as well."
+
+Kept AAPL alone as `BASE_WATCHLIST` -- a fixed, always-tracked dummy
+entry, not a portfolio holding. This still matters: the weekly snapshot
+job (`.github/workflows/eval-snapshot.yml`, Monday 06:00 UTC) runs
+unattended via a shared secret, with no interactive session, but the
+Upstox access token expires daily at 3:30 AM IST and is only refreshed by
+the user clicking through Upstox's login page (see
+`upstox_auth_store.py`). Most Mondays the token will not be valid at
+snapshot time. AAPL guarantees a continuous track record regardless;
+real holdings are additive on top of it, appearing whenever a run happens
+to land on a day the token is still fresh.
+
+`eval/tracker._real_holdings_watchlist()` fetches
+`upstox_account.get_real_holdings()` at snapshot time (long-term holdings
+only, not short-term/derivatives positions -- those can be F&O contracts
+that don't price the same way through yfinance), appends ".NS" to match
+yfinance's convention (same suffixing the frontend's ticker-suggestions
+datalist already does), and resolves a display name via
+`market_data.resolve_company_name` (added earlier this session for the
+same reason: Upstox's holdings response has no company-name field, only
+`trading_symbol`). Capped at `MAX_REAL_HOLDINGS_TRACKED = 10` -- each
+extra ticker costs a news-API call and an Azure OpenAI round trip per
+agent, and an unbounded real portfolio could quietly exceed the shared
+free-tier quota already budgeted tightly for a small fixed watchlist.
+
+`/eval/performance` used to iterate the fixed `WATCHLIST` constant; it
+now calls a new `eval_tracker.get_all_tracked_tickers()`, which scans
+`EvalSnapshots` for every distinct PartitionKey ever recorded (Table
+Storage has no cheap distinct-keys query at this scale, so a full scan is
+fine for a handful of tickers). This means a ticker that was tracked once
+and later drops out of the dynamic watchlist (a holding since sold, or
+the original MSFT/NVDA entries from before this change) still shows its
+existing history -- it just stops growing new snapshots. The original
+single MSFT/NVDA snapshots recorded under the old fixed watchlist are
+still sitting in the table as one-entry, permanently-flat tabs; left in
+place rather than deleted, since deleting production table data wasn't
+asked for and this session has no route to Azure Table Storage from here.
+
+Verified with mocked unit tests in `tests/test_tracker.py`:
+`_real_holdings_watchlist`'s not-connected/empty case, the ".NS"
+suffixing and name resolution, blank-symbol skipping, and the
+`MAX_REAL_HOLDINGS_TRACKED` cap; `record_snapshot` always including AAPL
+whether or not Upstox is connected, and adding real-holdings tickers on
+top when it is; and `get_all_tracked_tickers` returning distinct, sorted
+tickers from a table scan with duplicate PartitionKeys.
+
+### Also: info-icon popovers caused a horizontal scrollbar
+Real in-browser testing (not just a visual check) showed that revealing
+an info-icon popover -- next to "Track record" and "Historical rule
+check" -- forced the whole page into horizontal scroll on a browser
+window that wasn't maximized. The earlier display:none/block fix (see
+the entry above) only addressed the *hidden* state's contribution to
+scrollable overflow; once actually shown, the bubble's `left: 0`
+anchoring relative to a mid-page icon plus a 300px width could still push
+its right edge past the viewport on a narrower window. Fixed two ways:
+centered the bubble under its icon (`left: 50%; transform:
+translateX(-50%)`) instead of anchoring purely to the left, roughly
+halving the odds of overflowing either edge; and added `overflow-x:
+hidden` on `html`/`body` as a hard backstop, so nothing on the page --
+this popover or otherwise -- can ever force the window itself to scroll
+horizontally.

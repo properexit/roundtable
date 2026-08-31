@@ -253,7 +253,7 @@ async def eval_performance():
     buy-hold/hold-cash/sell-short), not anything account-specific.
     """
     out = {}
-    for ticker, _ in eval_tracker.WATCHLIST:
+    for ticker in eval_tracker.get_all_tracked_tickers():
         snapshots = eval_tracker.get_snapshots(ticker)
         if not snapshots:
             out[ticker] = {"snapshot_count": 0}

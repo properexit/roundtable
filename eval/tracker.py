@@ -2,11 +2,15 @@
 Forward-tracking evaluation of the real agent system.
 
 Runs the analysis-only graph (src/agents/graph.build_analysis_graph --
-no trade execution, nothing to approve) against a small fixed watchlist on
-a schedule, logs each decision plus the price at that moment to Azure
-Table Storage, and reconstructs a simple simulated equity curve from those
-decisions for comparison against the three naive baselines in
-eval/baselines.py.
+no trade execution, nothing to approve) against a watchlist on a schedule,
+logs each decision plus the price at that moment to Azure Table Storage,
+and reconstructs a simple simulated equity curve from those decisions for
+comparison against the three naive baselines in eval/baselines.py.
+
+The watchlist itself is AAPL (a fixed dummy entry, always tracked, so the
+track record has continuous history independent of anything account-
+specific) plus whatever is currently in the user's real Upstox long-term
+holdings, refetched fresh on every run -- see _real_holdings_watchlist.
 
 This exists instead of a classic historical backtest because the News/
 Sentiment agent's data source (NewsAPI free tier) only covers the last
@@ -24,22 +28,62 @@ from azure.data.tables import TableServiceClient
 from dotenv import load_dotenv
 
 from src.agents.graph import build_analysis_graph
-from src.tools import market_data
+from src.tools import market_data, upstox_account
 
 load_dotenv()
 
 TABLE_NAME = "EvalSnapshots"
 
-# Kept small and fixed on purpose: each entry costs one NewsAPI call (free
-# tier: 100/day total, shared with the public demo) and one Azure OpenAI
-# round trip per agent. Three tickers, run weekly, is comfortably
-# sustainable; a larger or on-demand-configurable watchlist would need a
-# real quota budget worked out first.
-WATCHLIST = [
+# AAPL is the one fixed, always-on entry -- deliberately a well-known
+# dummy example, not a portfolio holding. It exists so the track record
+# has a continuous history from day one, independent of whether the user
+# is logged into Upstox on any given week (see _real_holdings_watchlist
+# below for why that can't be relied on for every run).
+BASE_WATCHLIST = [
     ("AAPL", "Apple Inc"),
-    ("MSFT", "Microsoft Corporation"),
-    ("NVDA", "NVIDIA Corporation"),
 ]
+
+# Max additional tickers pulled from real holdings per run. Each one costs
+# one NewsAPI/Marketaux call and one Azure OpenAI round trip per agent, and
+# an unbounded real portfolio could quietly blow through the shared
+# free-tier quota this already runs close to -- see the WATCHLIST history
+# in docs/decisions.md. Ten is comfortably above any real holdings list
+# this project has seen so far.
+MAX_REAL_HOLDINGS_TRACKED = 10
+
+
+def _real_holdings_watchlist() -> list[tuple[str, str]]:
+    """
+    Best-effort (ticker, company_name) pairs from the user's real Upstox
+    long-term holdings, so the track record grows with whatever is
+    actually owned instead of a hand-picked list -- buy something new and
+    it starts showing up here the next time a snapshot runs. Long-term
+    holdings only, not short-term/derivatives positions (those can be F&O
+    contracts that don't price the same way through yfinance). NSE-listed,
+    so ".NS" is appended to match yfinance's convention (see
+    market_data.is_indian_ticker) -- the same suffixing the frontend
+    already does for its ticker-suggestions datalist.
+
+    Returns [] whenever the Upstox token isn't valid at snapshot time. It
+    expires daily (see upstox_auth_store.py) and this runs unattended on a
+    weekly schedule, so most runs will not land on a day with a fresh
+    login -- that's expected, not an error. AAPL alone keeps the track
+    record continuous on those weeks; holdings pick back up automatically
+    whenever a run does land on a day the token is still valid.
+    """
+    result = upstox_account.get_real_holdings()
+    if not result.get("connected"):
+        return []
+
+    pairs = []
+    for entry in (result.get("data") or [])[:MAX_REAL_HOLDINGS_TRACKED]:
+        symbol = (entry.get("trading_symbol") or "").strip()
+        if not symbol:
+            continue
+        ticker = f"{symbol.upper()}.NS"
+        company_name = market_data.resolve_company_name(ticker)
+        pairs.append((ticker, company_name))
+    return pairs
 
 _analysis_graph = None
 
@@ -72,7 +116,9 @@ async def record_snapshot() -> list[dict]:
     now = datetime.now(timezone.utc)
     recorded = []
 
-    for ticker, company_name in WATCHLIST:
+    watchlist = BASE_WATCHLIST + _real_holdings_watchlist()
+
+    for ticker, company_name in watchlist:
         result = await graph.ainvoke({"ticker": ticker, "company_name": company_name})
         price = market_data.get_price(ticker)
 
@@ -98,6 +144,21 @@ def get_snapshots(ticker: str) -> list[dict]:
     table = _table_client()
     entities = table.query_entities(f"PartitionKey eq '{ticker.upper()}'")
     return sorted(entities, key=lambda e: e["RowKey"])
+
+
+def get_all_tracked_tickers() -> list[str]:
+    """
+    Every ticker that has at least one recorded snapshot, past or present
+    -- not just this week's watchlist. A ticker recorded weeks ago (AAPL
+    from day one, or a holding since sold) still has a track record worth
+    showing; it just stops growing new entries once it drops off the
+    dynamic watchlist. Table Storage has no cheap "distinct partition
+    keys" query, so this scans every row -- fine at this scale (a handful
+    of tickers, one row per ticker per week).
+    """
+    table = _table_client()
+    entities = table.list_entities(select=["PartitionKey"])
+    return sorted({e["PartitionKey"] for e in entities})
 
 
 def compute_agent_performance(snapshots: list[dict], starting_cash: float = 10_000.0) -> dict:
