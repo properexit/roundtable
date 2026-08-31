@@ -23,7 +23,8 @@ az containerapp secret set --name "$APP_NAME" --resource-group "$RESOURCE_GROUP"
   site-session-secret="$SITE_SESSION_SECRET" \
   upstox-client-id="$UPSTOX_CLIENT_ID" \
   upstox-client-secret="$UPSTOX_CLIENT_SECRET" \
-  upstox-redirect-uri="$UPSTOX_REDIRECT_URI"
+  upstox-redirect-uri="$UPSTOX_REDIRECT_URI" \
+  eval-trigger-secret="$EVAL_TRIGGER_SECRET"
 
 # --set-env-vars forces a new revision, which also gives Azure a fresh
 # chance to schedule with the (already-correct) ingress port config instead
@@ -40,6 +41,7 @@ az containerapp update --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" --s
   SITE_SESSION_SECRET=secretref:site-session-secret \
   UPSTOX_CLIENT_ID=secretref:upstox-client-id \
   UPSTOX_CLIENT_SECRET=secretref:upstox-client-secret \
-  UPSTOX_REDIRECT_URI=secretref:upstox-redirect-uri
+  UPSTOX_REDIRECT_URI=secretref:upstox-redirect-uri \
+  EVAL_TRIGGER_SECRET=secretref:eval-trigger-secret
 
 echo "Done. Give it ~30-60s, then check: az containerapp revision list --name $APP_NAME --resource-group $RESOURCE_GROUP -o table"

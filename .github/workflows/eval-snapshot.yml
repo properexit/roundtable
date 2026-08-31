@@ -1,0 +1,20 @@
+name: Weekly Eval Snapshot
+
+# Runs the analysis-only graph (no trade execution) against the eval
+# watchlist once a week and records the decisions to Table Storage --
+# see eval/tracker.py. workflow_dispatch lets it be triggered manually
+# too, for testing without waiting for the schedule.
+on:
+  schedule:
+    - cron: "0 6 * * 1"  # Monday 06:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  record-snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger /eval/record-snapshot
+        run: |
+          curl -sf -X POST \
+            "https://roundtable-api.lemonwater-fd61f0be.germanywestcentral.azurecontainerapps.io/eval/record-snapshot" \
+            -H "X-Eval-Secret: ${{ secrets.EVAL_TRIGGER_SECRET }}"

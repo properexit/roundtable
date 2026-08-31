@@ -20,6 +20,7 @@ just another open endpoint.
 from __future__ import annotations
 
 import os
+import secrets
 import uuid
 from urllib.parse import quote
 
@@ -32,6 +33,9 @@ from pydantic import BaseModel
 from src.agents.graph import build_graph
 from src.api import auth
 from src.tools import portfolio, upstox_account, upstox_auth_store
+from eval import tracker as eval_tracker
+from eval.backtest import sma_crossover_backtest
+from eval.baselines import all_baselines
 
 app = FastAPI(title="Roundtable API", version="0.1.0")
 
@@ -206,3 +210,59 @@ async def real_positions():
 @app.get("/portfolio/real/funds", dependencies=[Depends(auth.require_session)])
 async def real_funds():
     return upstox_account.get_real_funds()
+
+
+# --- Eval: forward-tracking + historical rule-based backtest ---------------
+
+
+def _check_eval_secret(x_eval_secret: str | None) -> None:
+    """
+    Separate from the site-login auth on purpose: this isn't a person
+    browsing the site, it's a scheduled job (see .github/workflows/
+    eval-snapshot.yml) with no session to log into. A shared secret,
+    constant-time compared, is the right amount of ceremony for "only my
+    own scheduler should be able to trigger this" -- each call costs a
+    real NewsAPI request and several Azure OpenAI calls, so it isn't left
+    open to anyone who finds the URL.
+    """
+    expected = os.environ["EVAL_TRIGGER_SECRET"]
+    if not x_eval_secret or not secrets.compare_digest(x_eval_secret, expected):
+        raise HTTPException(status_code=401, detail="Invalid or missing eval trigger secret")
+
+
+@app.post("/eval/record-snapshot")
+async def eval_record_snapshot(x_eval_secret: str | None = Header(default=None)):
+    _check_eval_secret(x_eval_secret)
+    recorded = await eval_tracker.record_snapshot()
+    return {"recorded": recorded}
+
+
+@app.get("/eval/performance")
+async def eval_performance():
+    """
+    Public and read-only -- this is aggregate track-record data for the
+    watchlist (what the system called, and how that's played out against
+    buy-hold/hold-cash/sell-short), not anything account-specific.
+    """
+    out = {}
+    for ticker, _ in eval_tracker.WATCHLIST:
+        snapshots = eval_tracker.get_snapshots(ticker)
+        if not snapshots:
+            out[ticker] = {"snapshot_count": 0}
+            continue
+        agent_perf = eval_tracker.compute_agent_performance(snapshots)
+        baselines = all_baselines(snapshots[0]["price"], snapshots[-1]["price"])
+        out[ticker] = {
+            "snapshots": snapshots,
+            "agent_performance": agent_perf,
+            "baselines": baselines,
+        }
+    return out
+
+
+@app.get("/eval/backtest")
+async def eval_backtest(ticker: str, period: str = "2y", short_window: int = 20, long_window: int = 50):
+    try:
+        return sma_crossover_backtest(ticker.upper(), period, short_window, long_window)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

@@ -268,3 +268,61 @@ ticker namespaces. Distinguished "not connected to Upstox" (adds nothing
 to the prompt) from "connected, checked, confirmed no position" (adds an
 explicit "no position" line) rather than collapsing both into silence --
 the second case is real information the agent should have.
+
+## Feature: eval harness -- forward-tracking + rule-based historical backtest (2026-08-30)
+Two deliberately separate pieces, not one, because they're evaluating two
+different things and mixing them would misrepresent both:
+
+### A. Forward-tracking (eval/tracker.py)
+Runs a new `build_analysis_graph()` (src/agents/graph.py -- the same four
+analyst nodes as the real pipeline, reusing the exact node functions, just
+stopped before propose/human_approval/execute since this runs unattended
+with no human to approve a trade) against a small fixed watchlist
+(AAPL, MSFT, NVDA), and logs each decision + the price at that moment to a
+new `EvalSnapshots` Table Storage table. `eval.compute_agent_performance()`
+replays the recorded decisions sequentially (buy spends notional cash,
+sell converts back, hold no-ops) into a simple equity curve, compared
+against `eval.baselines.all_baselines()` (buy-hold / hold-cash / sell-short)
+computed from the same first/last recorded price.
+
+Triggered weekly by `.github/workflows/eval-snapshot.yml` (GitHub Actions'
+own cron scheduler) calling `POST /eval/record-snapshot`, gated by a shared
+secret (`EVAL_TRIGGER_SECRET`, constant-time compared) rather than the
+site-login auth -- this is a scheduled job, not a person with a session.
+Chose GitHub Actions over provisioning a dedicated Azure Container App Job
+for this: it's free, cron-native, and this repo's CI/CD already lives
+there -- no new Azure resource needed for a once-a-week HTTP call.
+
+### B. Rule-based historical backtest (eval/backtest.py)
+NOT the LLM agents -- a moving-average-crossover strategy (golden
+cross / death cross) backtested over real historical prices (yfinance
+genuinely has years of OHLCV, unlike news or fundamentals). Exists as a
+second, clearly-separate reference point: does a real systematic rule beat
+buy-hold/hold-cash/sell-short over a period the agents themselves cannot
+be honestly evaluated on?
+
+### Why not backtest the actual agents historically
+Two independent data walls, not one: NewsAPI's free tier only returns
+articles from the past ~30 days, and yfinance's fundamentals
+(`get_fundamentals`) are always *current* company data, not a point-in-time
+historical snapshot -- there's no free source for "what was AAPL's P/E on
+2023-06-01." Either constraint alone rules out a full historical backtest
+of the real system; feeding today's fundamentals or today's news into a
+decision dated years ago and calling it a "backtest" would be quietly
+wrong, not a shortcut. Chose to keep A and B honest about what data each
+one actually has, rather than build one backtest that fudges either gap.
+
+### Verification
+`eval/baselines.py` and `eval/backtest.py` are pure functions, unit tested
+directly (including an independent trade-log replay that reconstructs
+`sma_crossover_backtest`'s own ending value from its returned trades list
+and confirms they match, catching arithmetic bugs the return-value
+assertion alone wouldn't). `eval/tracker.py`'s Table Storage and graph
+calls verified with mocks (record_snapshot writes the right entity shape
+once per watchlist ticker; get_snapshots sorts chronologically regardless
+of query order; compute_agent_performance's buy/sell/hold replay, the
+insufficient-cash skip, and the sell-capped-at-held-shares cases each
+checked directly). The three new `/eval/*` routes verified with FastAPI's
+TestClient: the trigger secret gates record-snapshot correctly (missing,
+wrong, and correct cases), and both GET routes degrade cleanly (empty
+history, insufficient backtest data) rather than 500ing.

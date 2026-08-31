@@ -175,3 +175,34 @@ def build_graph():
     graph.add_edge("execute", END)
 
     return graph.compile(checkpointer=MemorySaver())
+
+
+def build_analysis_graph():
+    """
+    Same four analysts (fundamentals, news, draft, risk, final), stopping
+    at a recommendation -- no propose/human_approval/execute nodes.
+
+    Used by eval/tracker.py, which runs unattended on a schedule with no
+    human present to approve a trade. Reuses the exact same node functions
+    as build_graph() (same pattern as scripts/test_interrupt_flow.py
+    reusing node functions for a different graph shape) so the eval
+    harness is genuinely evaluating the same analysis logic that runs in
+    production, not a reimplementation of it. No checkpointer needed --
+    single-shot, nothing ever pauses for this graph to resume from.
+    """
+    graph = StateGraph(RoundtableState)
+    graph.add_node("fundamentals", _fundamentals_node)
+    graph.add_node("news", _news_node)
+    graph.add_node("draft", _draft_node)
+    graph.add_node("risk", _risk_node)
+    graph.add_node("final", _final_node)
+
+    graph.add_edge(START, "fundamentals")
+    graph.add_edge(START, "news")
+    graph.add_edge("fundamentals", "draft")
+    graph.add_edge("news", "draft")
+    graph.add_edge("draft", "risk")
+    graph.add_edge("risk", "final")
+    graph.add_edge("final", END)
+
+    return graph.compile()
