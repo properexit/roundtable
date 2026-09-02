@@ -12,7 +12,23 @@ name: Daily Eval Snapshot
 # without waiting for the schedule.
 on:
   schedule:
-    - cron: "0 6 * * *"  # Every day, 06:00 UTC (11:30 AM IST)
+    # Originally 06:00 UTC (11:30 AM IST), aiming to catch NSE mid-session.
+    # In practice GitHub's scheduled-workflow trigger ran ~4h49m late on
+    # its first real firing (06:00 UTC scheduled -> ~10:49 UTC actual) --
+    # a documented GitHub limitation, not a bug in this repo: scheduled
+    # runs get deprioritized under load and have no timing guarantee,
+    # especially on free-tier/public repos. That pushed the snapshot past
+    # NSE close (3:30 PM IST / 10:00 UTC) anyway, so instead of fighting
+    # an unreliable trigger to hit an *intraday* price, this now
+    # deliberately targets *after* close: 11:00 UTC / 4:30 PM IST, an
+    # hour past close. yfinance returns the same final closing price from
+    # close until the next 9:15 AM IST open, so any delay landing
+    # anywhere in that ~17-hour window -- even one as large as the 4h49m
+    # already observed -- still gets the correct, final closing price.
+    # This also makes day-over-day returns a clean close-to-close
+    # comparison instead of a mix of random intraday and post-close
+    # snapshots depending on how late GitHub happened to run that day.
+    - cron: "0 11 * * *"
   workflow_dispatch: {}
 
 jobs:

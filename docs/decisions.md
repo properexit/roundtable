@@ -854,3 +854,24 @@ added later.
 second `cp` line for `web/architecture.png`, otherwise the live site
 would keep showing the placeholder even after a correct cPanel deploy,
 since the `<img>`'s `error` listener would keep firing on a 404.
+
+## Fix: daily eval snapshot moved to after NSE close, not mid-session (2026-09-02)
+The schedule was set to 06:00 UTC (11:30 AM IST) specifically to catch NSE
+mid-session. Its first two real firings blew through that: run #4 landed
+at 12:49 PM CEST (10:49 UTC) -- 4h49m late -- and run #5 similarly late.
+This is a documented GitHub Actions limitation, not a bug here: scheduled
+("cron") triggers are explicitly best-effort and get deprioritized under
+load, worse on free-tier/public repos, with no timing guarantee at all.
+
+That delay happened to push the snapshot past NSE close (3:30 PM IST /
+10:00 UTC) anyway, which the user caught by noticing the actual run
+timestamp and asking whether the market was already closed by then --
+it was. Rather than trying to out-schedule an unreliable trigger to hit
+a precise intraday price, moved the target itself to after close: 11:00
+UTC / 4:30 PM IST, an hour past the 3:30 PM close. yfinance returns the
+same final closing price from close until the next 9:15 AM IST open, so
+any delay landing anywhere in that ~17-hour window -- even one as large
+as the 4h49m already observed -- still lands on the correct, final
+closing price. This also makes every day's return a clean close-to-close
+comparison instead of a mix of intraday and post-close snapshots
+depending on how late GitHub happened to run that particular day.
